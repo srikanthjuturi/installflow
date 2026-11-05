@@ -3,7 +3,7 @@ import { Pressable, View } from 'react-native';
 
 import { Icon } from '@/components/icons/Icon';
 import { Pill, Text } from '@/components/ui';
-import { jobSlaPill, jobSlot } from '@/features/jobs/format';
+import { jobSlaPill, jobSlot, showsHighPriority } from '@/features/jobs/format';
 import { color } from '@/theme/semantic';
 import { palette } from '@/theme/tokens';
 import type { Job } from '@/types/domain';
@@ -58,7 +58,10 @@ export function PoolJobCard({ job, onPress, payoutHidden }: PoolJobCardProps) {
               justifyContent: 'space-between',
             }}
         >
-            <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', gap: 8, flexShrink: 1, flexWrap: 'wrap' }}>
+              {showsHighPriority(job) ? (
+                <Pill label={t('jobs.highPriority')} tone="danger" />
+              ) : null}
               <Pill label={job.category} tone="primary" />
               <Pill label={jobSlaPill(job)} tone="secondary" />
             </View>

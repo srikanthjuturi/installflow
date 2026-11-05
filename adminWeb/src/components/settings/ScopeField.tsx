@@ -301,7 +301,7 @@ function AreaManagerScope({
           </FieldDescription>
         ) : (
           <FieldDescription>
-            He covers every pincode in the states you pick. A state belongs to
+            They cover every pincode in the states you pick. A state belongs to
             one area manager.
           </FieldDescription>
         )}

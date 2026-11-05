@@ -4,9 +4,20 @@ A user belongs to zero+ companies via `membership`. Superadmin has role
 'superadmin' and no memberships. Role is immutable after creation.
 """
 
+import datetime
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text, Uuid, text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Uuid,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base_class import Base
@@ -44,6 +55,24 @@ class User(Base, IdMixin, AuditMixin, SoftDeleteMixin):
         Uuid,
         ForeignKey("companies.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    # NULL means "never tracked" — deliberately no server_default, so an
+    # existing row is left as NULL rather than backdated to migration time.
+    password_changed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    failed_login_locked_until: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    must_change_password: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    requires_security_password_change: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
 
     # NB: the case-insensitive UNIQUE index on lower(email) is created in the

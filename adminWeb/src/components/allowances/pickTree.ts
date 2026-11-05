@@ -21,6 +21,7 @@ export interface PickModel {
   id: string;
   name: string;
   brandName: string;
+  isActive: boolean;
 }
 
 export interface PickNode {
@@ -48,7 +49,7 @@ export function fromProductTree(nodes: readonly ProductNode[]): PickNode[] {
     children: n.children.map(walk),
     models: n.models
       .filter((m) => m.approvalStatus === "approved")
-      .map((m) => ({ id: m.id, name: m.name, brandName: m.brandName }))
+      .map((m) => ({ id: m.id, name: m.name, brandName: m.brandName, isActive: m.isActive }))
       .sort(byName),
   });
   return nodes.map(walk);
@@ -86,7 +87,7 @@ export function fromSpeedCatalogue(catalogue: SpeedCatalogue): PickNode[] {
   for (const m of catalogue.models) {
     made
       .get(m.nodeId)
-      ?.models.push({ id: m.id, name: m.name, brandName: m.brandName });
+      ?.models.push({ id: m.id, name: m.name, brandName: m.brandName, isActive: m.isActive });
   }
 
   const sortDeep = (list: PickNode[]) => {

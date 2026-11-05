@@ -70,6 +70,7 @@ from app.features.masters.schemas import (
     SerialImportReport,
     SerialMatchOut,
     SerialReject,
+    _has_disallowed_character,
 )
 from app.models.membership import Membership
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
@@ -1279,6 +1280,22 @@ async def submit_model(
     body: ProductSubmitRequest,
 ) -> ProductNodeOut:
     """A vendor adds a product to their own book. Unpriced, and pending."""
+    # Pausing a vendor only flips Vendor.is_active — it does not revoke the
+    # session — so a paused vendor's portal can still reach this endpoint.
+    # The caller's only honest vendor identity is principal.vendor_id (never
+    # client-supplied), so check IT here rather than reusing _validate_vendor,
+    # which is shaped for a staff-picked vendor id from a request body.
+    active = await db.scalar(
+        select(Vendor.id).where(
+            Vendor.id == principal.vendor_id,
+            Vendor.company_id == principal.company_id,
+            Vendor.is_active.is_(True),
+            Vendor.deleted_at.is_(None),
+        )
+    )
+    if active is None:
+        raise _bad_request("Unknown or inactive vendor")
+
     parent = await _load_node(db, principal.company_id, node_id)
     if not parent.is_leaf:
         raise _bad_request(
@@ -1502,9 +1519,17 @@ async def _node_path(
 
 
 def _approvals_query(company_id: uuid.UUID):
+    # Paused is a stronger statement than any approval state: ops pausing a row
+    # — including one still pending — means it should not be surfaced for a
+    # decision at all, nor linger in the approved/rejected history as if it
+    # were still a live catalogue entry. A staff editor can pause a pending
+    # vendor submission straight from the Categories tree (`update_model`
+    # tests `is_active` independently of `approval_status`), so this cannot be
+    # assumed to only ever be true before anyone has looked at the row.
     return select(ProductModel).where(
         ProductModel.company_id == company_id,
         ProductModel.deleted_at.is_(None),
+        ProductModel.is_active.is_(True),
     )
 
 
@@ -1523,6 +1548,7 @@ async def pending_count(db: AsyncSession, principal: Principal) -> int:
         .where(
             ProductModel.company_id == principal.company_id,
             ProductModel.deleted_at.is_(None),
+            ProductModel.is_active.is_(True),
             ProductModel.approval_status == PENDING,
         )
     )
@@ -2080,7 +2106,14 @@ def _iter_serial_rows(data: bytes, filename: str):
     """
     if filename.lower().endswith(".csv"):
         text = data.decode("utf-8-sig", errors="replace")
-        yield from csv.reader(io.StringIO(text))
+        first_line = text.splitlines()[0] if text else ""
+        try:
+            delimiter = csv.Sniffer().sniff(first_line, delimiters=",;").delimiter
+        except csv.Error:
+            # A single-column file has nothing to sniff — comma is the sane
+            # default rather than a crash on the most common case.
+            delimiter = ","
+        yield from csv.reader(io.StringIO(text), delimiter=delimiter)
         return
 
     try:
@@ -2123,28 +2156,38 @@ def _norm_serial_header(raw: object) -> str:
 async def _existing_lower(
     db: AsyncSession,
     company_id: uuid.UUID,
-    model_id: uuid.UUID,
     lowers: list[str],
-) -> set[str]:
-    """Which of these serials the model already holds, matched case-insensitively.
+) -> dict[str, uuid.UUID]:
+    """Which of these serials the COMPANY already holds, and on which model.
 
-    Probed rather than loaded whole: a model may hold a hundred thousand serials
-    while the file names ten, so asking about the ten is what uses
-    `uq_product_model_serials_model_serial_lower` instead of reading the lot.
+    Company-wide, not model-wide: serial uniqueness is now enforced across every
+    product a company carries, not merely within one model, so this has to
+    reveal the OWNING model rather than a bare yes/no — the CALLER compares the
+    returned owner against its own `model_id` to tell a same-model duplicate
+    (silent top-up) from a clash with a different model (excluded, reported).
+    This function no longer takes `model_id` itself: it has nothing left to do
+    with it now that the lookup scans the whole company.
+
+    Still probed rather than loaded whole: a company may hold a hundred thousand
+    serials across its catalogue while the file names ten, so asking about the
+    ten is what uses the unique index instead of reading the lot.
     """
-    found: set[str] = set()
+    found: dict[str, uuid.UUID] = {}
     for start in range(0, len(lowers), _SERIAL_PROBE_CHUNK):
         chunk = lowers[start : start + _SERIAL_PROBE_CHUNK]
         if not chunk:
             continue
-        rows = await db.scalars(
-            select(func.lower(ProductModelSerial.serial)).where(
+        rows = await db.execute(
+            select(
+                func.lower(ProductModelSerial.serial),
+                ProductModelSerial.product_model_id,
+            ).where(
                 ProductModelSerial.company_id == company_id,
-                ProductModelSerial.product_model_id == model_id,
                 func.lower(ProductModelSerial.serial).in_(chunk),
             )
         )
-        found.update(rows.all())
+        for lowered, owner_id in rows.all():
+            found[lowered] = owner_id
     return found
 
 
@@ -2256,10 +2299,20 @@ async def add_serials(
     await _serial_target(db, principal, model_id, own_only=own_only)
 
     wanted = body.serials
-    present = await _existing_lower(
-        db, principal.company_id, model_id, [s.lower() for s in wanted]
+    owners = await _existing_lower(
+        db, principal.company_id, [s.lower() for s in wanted]
     )
-    fresh = [s for s in wanted if s.lower() not in present]
+    fresh: list[str] = []
+    same_model = 0
+    other_model = 0
+    for serial in wanted:
+        owner_id = owners.get(serial.lower())
+        if owner_id is None:
+            fresh.append(serial)
+        elif owner_id == model_id:
+            same_model += 1
+        else:
+            other_model += 1
 
     if fresh:
         await db.execute(
@@ -2285,7 +2338,8 @@ async def add_serials(
 
     return SerialAddResult(
         added=len(fresh),
-        duplicates=len(wanted) - len(fresh),
+        duplicates=same_model,
+        onOtherProduct=other_model,
         total=await serial_count(db, principal.company_id, model_id),
     )
 
@@ -2343,16 +2397,26 @@ async def update_serial(
             id=row.id, serial=row.serial, createdAt=row.created_at
         )
 
-    clash = await db.scalar(
-        select(ProductModelSerial.id).where(
+    # Company-wide, not model-wide: serial uniqueness is now enforced across
+    # every product the company carries, so the clash has to be looked for
+    # across the whole company rather than only on this model.
+    other_model_id = await db.scalar(
+        select(ProductModelSerial.product_model_id).where(
             ProductModelSerial.company_id == principal.company_id,
-            ProductModelSerial.product_model_id == model_id,
             func.lower(ProductModelSerial.serial) == value.lower(),
             ProductModelSerial.id != serial_id,
         )
     )
-    if clash is not None:
-        raise _conflict(f"{value} is already on this product")
+    if other_model_id is not None:
+        other_name = await db.scalar(
+            select(ProductModel.name).where(
+                ProductModel.company_id == principal.company_id,
+                ProductModel.id == other_model_id,
+            )
+        )
+        raise _conflict(
+            f"{value} is already on {other_name or 'another product'}"
+        )
 
     row.serial = value
     row.updated_by = principal.user_id
@@ -2442,6 +2506,18 @@ async def import_serials(
                     )
                 )
             return
+        bad = _has_disallowed_character(raw)
+        if bad is not None:
+            rejected += 1
+            if len(rejects) < MAX_SERIAL_REJECTS_RETURNED:
+                rejects.append(
+                    SerialReject(
+                        row=number,
+                        serial=raw[:64],
+                        reason=f"Contains '{bad}' — only letters, numbers and '-' are allowed",
+                    )
+                )
+            return
         key = raw.lower()
         if key in seen:
             duplicates_in_file += 1
@@ -2457,7 +2533,12 @@ async def import_serials(
         i for i, c in enumerate(head) if _norm_serial_header(c) in _SERIAL_HEADERS
     ]
     column = named[0] if named else 0
-    if not named and head and head[column]:
+    # A first cell that matches no known spelling AND has no digit at all is
+    # almost certainly a header the sniffer above just split out correctly
+    # (e.g. "Serial Number" out of a ";"-delimited file) — not a real serial,
+    # which always carries at least one digit. Skip it rather than importing
+    # it as row 1.
+    if not named and head and head[column] and any(ch.isdigit() for ch in head[column]):
         rows_read += 1
         take(1, head[column])
 
@@ -2470,10 +2551,44 @@ async def import_serials(
         cells = row if isinstance(row, (list, tuple)) else [row]
         take(number, _cell_text(cells[column]) if column < len(cells) else "")
 
-    present = await _existing_lower(
-        db, principal.company_id, model_id, [s.lower() for s in kept]
+    # Company-wide, not model-wide: a serial already owned by a DIFFERENT model
+    # is a clash, not a top-up, and is excluded from the insert and reported as
+    # a reject naming the other product. One owned by THIS model stays a quiet
+    # `alreadyPresent`, same as before.
+    owners = await _existing_lower(
+        db, principal.company_id, [s.lower() for s in kept]
     )
-    fresh = [s for s in kept if s.lower() not in present]
+    fresh: list[str] = []
+    already_present = 0
+    other_owned: dict[uuid.UUID, list[str]] = {}
+    for serial in kept:
+        owner_id = owners.get(serial.lower())
+        if owner_id is None:
+            fresh.append(serial)
+        elif owner_id == model_id:
+            already_present += 1
+        else:
+            other_owned.setdefault(owner_id, []).append(serial)
+
+    if other_owned:
+        name_rows = await db.execute(
+            select(ProductModel.id, ProductModel.name).where(
+                ProductModel.company_id == principal.company_id,
+                ProductModel.id.in_(other_owned.keys()),
+            )
+        )
+        names = dict(name_rows.all())
+        for owner_id, serials in other_owned.items():
+            other_name = names.get(owner_id, "another product")
+            for serial in serials:
+                rejected += 1
+                if len(rejects) < MAX_SERIAL_REJECTS_RETURNED:
+                    rejects.append(
+                        SerialReject(
+                            serial=serial[:64],
+                            reason=f"Already on another product: {other_name}",
+                        )
+                    )
 
     if not dry_run and fresh:
         # Chunked for the same reason the probe is: one INSERT carrying 100,000
@@ -2503,7 +2618,7 @@ async def import_serials(
         rowsRead=rows_read,
         added=len(fresh),
         duplicatesInFile=duplicates_in_file,
-        alreadyPresent=len(present),
+        alreadyPresent=already_present,
         rejected=rejected,
         rejects=rejects,
         # On a dry run nothing was written, so the figure the console shows as

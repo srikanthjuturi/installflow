@@ -31,7 +31,9 @@ from app.core.schemas import (
     paginated,
 )
 from app.features.auth.schemas import OtpRequestResponse
-from app.features.technicians import service, transfer_service
+from app.core.parts_address import PartsAddressIn, PartsAddressOut
+from app.features.technicians import rules_service, service, transfer_service
+from app.features.technicians.rules_schemas import HoldingIn, TechnicianRulesIn, TechnicianRulesOut
 from app.models.role import AREA_MANAGER, NATIONAL_HEAD
 from app.features.technicians.schemas import (
     AppLinkOutcome,
@@ -117,6 +119,34 @@ async def get_my_technician_profile(
     their own record.
     """
     return envelope(await service.get_me(db, principal))
+
+
+@router.get("/me/parts-address", response_model=ApiEnvelope[PartsAddressOut | None])
+async def get_my_parts_address(
+    db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[PartsAddressOut | None]:
+    """Where spare parts are sent to you, or null. No feature guard, like `/me`."""
+    return envelope(await service.get_my_parts_address(db, principal))
+
+
+@router.put("/me/parts-address", response_model=ApiEnvelope[PartsAddressOut | None])
+async def set_my_parts_address(
+    db: Db, principal: CompanyPrincipal, body: PartsAddressIn
+) -> ApiEnvelope[PartsAddressOut | None]:
+    """Save your parts address. The pincode must be a real, active one (422
+    `UNKNOWN_PINCODE`). Applies to part requests raised AFTER this."""
+    return envelope(
+        await service.set_my_parts_address(db, principal, body),
+        message="Parts address saved",
+    )
+
+
+@router.delete("/me/parts-address", response_model=ApiEnvelope[None])
+async def clear_my_parts_address(
+    db: Db, principal: CompanyPrincipal
+) -> ApiEnvelope[None]:
+    await service.clear_my_parts_address(db, principal)
+    return envelope(None, message="Parts address removed")
 
 
 @router.get(
@@ -530,6 +560,59 @@ async def update_technician(
 ) -> ApiEnvelope[TechnicianDetailOut]:
     data = await service.update_technician(db, principal, technician_id, body)
     return envelope(data, message="Technician updated")
+
+
+@router.get("/{technician_id}/rules", response_model=ApiEnvelope[TechnicianRulesOut])
+async def get_rules(
+    technician_id: uuid.UUID, db: Db, principal: CanView
+) -> ApiEnvelope[TechnicianRulesOut]:
+    """This technician's own rule overrides, the redemption terms and the holding trail."""
+    return envelope(await rules_service.get_rules(db, principal, technician_id))
+
+
+@router.put("/{technician_id}/rules", response_model=ApiEnvelope[TechnicianRulesOut])
+async def put_rules(
+    technician_id: uuid.UUID, body: TechnicianRulesIn, db: Db, principal: CanEdit
+) -> ApiEnvelope[TechnicianRulesOut]:
+    """Replace the overrides. Null inherits. Applies to jobs accepted AFTER this."""
+    return envelope(
+        await rules_service.put_rules(db, principal, technician_id, body),
+        message="Rules saved",
+    )
+
+
+# Holding back someone's pay is a payer's decision: National Head and above, on top of the
+# edit key (an Area Manager can edit a profile but does not pay it).
+@router.put(
+    "/{technician_id}/holding",
+    response_model=ApiEnvelope[TechnicianRulesOut],
+    dependencies=[Depends(require_min_rank(NATIONAL_HEAD))],
+)
+async def put_holding(
+    technician_id: uuid.UUID, body: HoldingIn, db: Db, principal: CanEdit
+) -> ApiEnvelope[TechnicianRulesOut]:
+    """Hold back (or, with 0, release) part of what this technician may redeem."""
+    return envelope(
+        await rules_service.put_holding(db, principal, technician_id, body),
+        message="Holding saved",
+    )
+
+
+@router.put(
+    "/{technician_id}/parts-address",
+    response_model=ApiEnvelope[TechnicianDetailOut],
+)
+async def set_parts_address(
+    technician_id: uuid.UUID,
+    body: PartsAddressIn | None,
+    db: Db,
+    principal: CanEdit,
+) -> ApiEnvelope[TechnicianDetailOut]:
+    """Set a technician's parts address for them; a null body clears it."""
+    return envelope(
+        await service.set_parts_address(db, principal, technician_id, body),
+        message="Parts address saved",
+    )
 
 
 @router.put(

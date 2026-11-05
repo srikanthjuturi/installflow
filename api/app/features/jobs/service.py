@@ -36,6 +36,11 @@ from sqlalchemy import Select, and_, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from app.models.technician_location import TechnicianLocation
+from app.features.jobs.schemas import LocationIn
+from app.core import parts_address
+from app.core.technician_rules import penalty_bands_for
 from app.core import brand
 from app.core.accept_snapshot import build_accept_snapshot, speed_of, travel_of
 from app.core.config import settings
@@ -461,6 +466,7 @@ def _offer_out(
         maskedCustomer=mask_name(t.customer_name),
         payoutPaise=t.technician_payout_paise,
         bonusPaise=t.bonus_paise,
+        isHighPriority=t.is_high_priority,
     )
 
 
@@ -2091,7 +2097,8 @@ async def _band_for(
     else:
         hours = (row.slot_start - _now()).total_seconds() / 3600
         index = cancel_band_index(hours)
-    band = int(snapshot_value(row.rules_snapshot, "cancel_penalties_paise")[index])
+    # Epic 3: the holder's own penalty bands, frozen at accept, else the ticket's.
+    band = int(penalty_bands_for(row)[index])
 
     already = await charged_this_month(
         db, company_id=row.company_id, technician_id=technician_id
@@ -2535,6 +2542,10 @@ async def request_part(
                 other_name=other_name,
                 part_name=part_name,
                 note=body.note,
+                # Epic 6: where the part is to be delivered, copied NOW.
+                delivery_address=parts_address.snapshot_for(
+                    profile, technician_phone=await _technician_phone(db, profile)
+                ),
                 status="requested",
             )
             db.add(request)
@@ -2919,3 +2930,83 @@ async def reschedule(
     return await get_job(
         db, ticket_id, company_id=company_id, technician_id=profile.id
     )
+
+
+# ── live location (Epic 4) ───────────────────────────────────────────────────
+
+#: A job is "live" for location sharing while the technician holds it and is out
+#: working it. Mirrors `tickets.location_service.ACTIVE_STATUSES`; kept as its
+#: own constant because slices never import each other.
+LOCATION_STATUSES = ("Assigned", "In Progress", "Awaiting Part")
+#: The least gap between two accepted reports. The phone is told this and obeys
+#: it; the server enforces it so a buggy build cannot hammer the table.
+LOCATION_MIN_GAP_SECONDS = 15
+
+
+async def record_location(
+    db: AsyncSession,
+    *,
+    company_id: uuid.UUID,
+    technician_id: uuid.UUID,
+    ticket_id: uuid.UUID,
+    body: "LocationIn",
+):
+    """Store the technician's latest position for a job they hold.
+
+    409 `JOB_NOT_ACTIVE` unless the ticket is theirs and live - a phone that keeps
+    sending after the job ended is told to stop, and nothing is stored. One row
+    per technician, overwritten: there is no trail by design.
+    """
+    row = await db.scalar(
+        mine_query(company_id=company_id, technician_id=technician_id).where(
+            Ticket.id == ticket_id
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if row.status not in LOCATION_STATUSES:
+        raise JobRefused(
+            "JOB_NOT_ACTIVE",
+            "This job is not active, so your location is not being shared.",
+        )
+
+    now = _now()
+    last = await db.scalar(
+        select(TechnicianLocation.received_at).where(
+            TechnicianLocation.company_id == company_id,
+            TechnicianLocation.technician_id == technician_id,
+            TechnicianLocation.ticket_id == ticket_id,
+        )
+    )
+    if last is not None and (now - last).total_seconds() < LOCATION_MIN_GAP_SECONDS:
+        return False
+
+    recorded = body.recordedAt or now
+    if recorded.tzinfo is None:
+        recorded = recorded.replace(tzinfo=datetime.timezone.utc)
+    recorded = min(recorded, now)  # a fast phone clock cannot post-date itself
+    stmt = pg_insert(TechnicianLocation).values(
+        company_id=company_id,
+        technician_id=technician_id,
+        ticket_id=ticket_id,
+        latitude=body.latitude,
+        longitude=body.longitude,
+        accuracy_m=body.accuracyM,
+        recorded_at=recorded,
+        received_at=now,
+    )
+    await db.execute(
+        stmt.on_conflict_do_update(
+            constraint="uq_technician_locations_technician",
+            set_={
+                "ticket_id": stmt.excluded.ticket_id,
+                "latitude": stmt.excluded.latitude,
+                "longitude": stmt.excluded.longitude,
+                "accuracy_m": stmt.excluded.accuracy_m,
+                "recorded_at": stmt.excluded.recorded_at,
+                "received_at": stmt.excluded.received_at,
+            },
+        )
+    )
+    await db.commit()
+    return True

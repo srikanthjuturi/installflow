@@ -7,6 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
+import { showToast } from '@/components/feedback';
 import { ScreenStatusBar, TitleBar } from '@/components/layout';
 import { Button, Text } from '@/components/ui';
 import { useRetryFailedUploads, useSubmitProof } from '@/features/proof/hooks/useProof';
@@ -461,7 +462,12 @@ export function ReviewScreen({ jobId }: ReviewScreenProps) {
             }
             onPress={() =>
               submit.mutate(undefined, {
-                onSuccess: () => router.replace(`/job/${jobId}`),
+                onSuccess: () => {
+                  // The response already moved the job to In Progress, so say
+                  // so: the screen that follows is the job, not a second start.
+                  showToast(t('proof.review.submitted'));
+                  router.replace(`/job/${jobId}`);
+                },
               })
             }
           />

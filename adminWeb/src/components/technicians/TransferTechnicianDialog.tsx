@@ -10,6 +10,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -28,7 +29,10 @@ import { useFeatureAccess } from "@/hooks/useAuth";
 import { useAutoSelectSingle } from "@/hooks/useAutoSelectSingle";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useFranchisee, useFranchiseeOptions } from "@/hooks/useFranchisees";
-import { useTransferPreview, useTransferTechnician } from "@/hooks/useTechnicians";
+import {
+  useTransferPreview,
+  useTransferTechnician,
+} from "@/hooks/useTechnicians";
 import type { Technician, TransferBlocker } from "@/types/technician";
 import { CoverageFields } from "./CoverageFields";
 import {
@@ -80,7 +84,7 @@ export function TransferTechnicianDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-3xl">
         <TransferForm
           technician={technician}
           onDone={() => onOpenChange(false)}
@@ -98,7 +102,9 @@ function TransferForm({
   onDone: () => void;
 }) {
   const { has } = useFeatureAccess();
-  const franchisees = useFranchiseeOptions({ enabled: has("franchisees.view") });
+  const franchisees = useFranchiseeOptions({
+    enabled: has("franchisees.view"),
+  });
   const apply = useTransferTechnician();
 
   const [toId, setToId] = useState("");
@@ -143,7 +149,9 @@ function TransferForm({
   });
   // An answer about a different franchisee is not an answer for this one.
   const current =
-    preview.data && preview.data.toFranchiseeId === toId ? preview.data : undefined;
+    preview.data && preview.data.toFranchiseeId === toId
+      ? preview.data
+      : undefined;
   const checking = Boolean(toId) && (preview.isFetching || settling);
   const busy = apply.isPending || checking;
 
@@ -158,7 +166,9 @@ function TransferForm({
     [detail.data]
   );
   const limitTo =
-    target && matches ? { franchisee: target.name, matches } : undefined;
+    target && matches
+      ? { franchisee: target.name, matches, franchiseeId: toId }
+      : undefined;
 
   const name = technician.name;
   const fromName = technician.franchiseeName;
@@ -194,278 +204,306 @@ function TransferForm({
   };
 
   return (
-    <form onSubmit={onSubmit} noValidate className="grid gap-4">
-      <DialogHeader>
-        <DialogTitle>Move {name} to another franchisee</DialogTitle>
-        <DialogDescription>
-          {name} works for {fromName} today. After the move they are offered{" "}
-          {toName ? `${toName}'s` : "the new franchisee's"} jobs instead, and{" "}
-          {toName ?? "the new franchisee"} manages and pays them.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-4"
+    >
+      <DialogScrollBody>
+        <DialogHeader>
+          <DialogTitle>Move {name} to another franchisee</DialogTitle>
+          <DialogDescription>
+            {name} works for {fromName} today. After the move they are offered{" "}
+            {toName ? `${toName}'s` : "the new franchisee's"} jobs instead, and{" "}
+            {toName ?? "the new franchisee"} manages and pays them.
+          </DialogDescription>
+        </DialogHeader>
 
-      <p className="text-[13px] text-ink-2">
-        They keep their categories, daily limit, base location, UPI details,
-        language and sign-in. Jobs and money already earned stay with {fromName}.
-      </p>
+        <p className="text-[13px] text-ink-2">
+          They keep their categories, daily limit, base location, UPI details,
+          language and sign-in. Jobs and money already earned stay with{" "}
+          {fromName}.
+        </p>
 
-      <Field>
-        <FieldLabel htmlFor="transfer-to" required>
-          Move to
-        </FieldLabel>
-        {franchisees.isLoading ? (
-          <Skeleton className="h-9 w-full rounded-lg" />
-        ) : franchisees.isError ? (
-          <div role="alert" className="flex items-center gap-2 text-[13px] text-danger">
-            Couldn&apos;t load the franchisees.
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => void franchisees.refetch()}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : options.length > COMBOBOX_ABOVE ? (
-          <Combobox
-            id="transfer-to"
-            value={
-              target
-                ? options.find((o) => o.value === toId) ?? null
-                : null
-            }
-            onValueChange={(o: ComboboxOption | null) => choose(o?.value ?? "")}
-            options={options}
-            placeholder="Choose a franchisee"
-            emptyMessage="No franchisee matches that"
-            disabled={apply.isPending}
-          />
-        ) : (
-          <Select
-            value={toId}
-            onValueChange={(v) => choose(v ? String(v) : "")}
-            disabled={apply.isPending}
-          >
-            <SelectTrigger id="transfer-to" className="w-full">
-              <SelectValue placeholder="Choose a franchisee">
-                {() =>
-                  options.find((o) => o.value === toId)?.label ??
-                  "Choose a franchisee"
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((o) => (
-                <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </Field>
-
-      <Field data-invalid={reasonTouched && problem ? true : undefined}>
-        <FieldLabel htmlFor="transfer-reason" required>
-          Why is {name} moving?
-        </FieldLabel>
-        <Textarea
-          id="transfer-reason"
-          value={reason}
-          maxLength={MAX_REASON}
-          disabled={apply.isPending}
-          placeholder={`e.g. Moved to the east side of the city, which ${toName ?? "the new franchisee"} now covers`}
-          aria-invalid={reasonTouched && problem ? true : undefined}
-          aria-describedby="transfer-reason-hint"
-          onChange={(e) => setReason(e.target.value)}
-          onBlur={() => setReasonTouched(true)}
-        />
-        {reasonTouched && problem ? (
-          <FieldDescription
-            id="transfer-reason-hint"
-            role="alert"
-            className="text-danger"
-          >
-            {problem}
-          </FieldDescription>
-        ) : (
-          <FieldDescription id="transfer-reason-hint">
-            Kept on their record. At least 5 characters.
-          </FieldDescription>
-        )}
-      </Field>
-
-      {toId ? (
-        <section aria-labelledby="transfer-coverage" className="grid gap-3">
-          <h3
-            id="transfer-coverage"
-            className="text-[11px] font-bold tracking-[0.04em] text-ink-3 uppercase"
-          >
-            Where they will work
-          </h3>
-
-          {preview.isError && !current ? (
+        <Field>
+          <FieldLabel htmlFor="transfer-to" required>
+            Move to
+          </FieldLabel>
+          {franchisees.isLoading ? (
+            <Skeleton className="h-9 w-full rounded-lg" />
+          ) : franchisees.isError ? (
             <div
               role="alert"
-              className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-[13px] text-danger"
+              className="flex items-center gap-2 text-[13px] text-danger"
             >
-              <XCircle className="size-4 shrink-0" aria-hidden />
-              Couldn&apos;t check that move.
+              Couldn&apos;t load the franchisees.
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => void preview.refetch()}
+                onClick={() => void franchisees.refetch()}
               >
-                Try again
+                Retry
               </Button>
             </div>
-          ) : !current ? (
-            <div aria-busy="true" className="grid gap-2">
-              <p className="text-[13px] text-ink-2">Checking what would change…</p>
-              <Skeleton className="h-14 w-full rounded-lg" />
-            </div>
+          ) : options.length > COMBOBOX_ABOVE ? (
+            <Combobox
+              id="transfer-to"
+              value={
+                target ? (options.find((o) => o.value === toId) ?? null) : null
+              }
+              onValueChange={(o: ComboboxOption | null) =>
+                choose(o?.value ?? "")
+              }
+              options={options}
+              placeholder="Choose a franchisee"
+              emptyMessage="No franchisee matches that"
+              disabled={apply.isPending}
+            />
           ) : (
-            <div
-              aria-busy={checking || undefined}
-              className={checking ? "grid gap-3 opacity-60" : "grid gap-3"}
+            <Select
+              value={toId}
+              onValueChange={(v) => choose(v ? String(v) : "")}
+              disabled={apply.isPending}
             >
-              {checking ? (
-                <p className="text-[13px] text-ink-2">Checking what would change…</p>
-              ) : null}
-
-              {current.blockers.length === 0 ? (
-                <div
-                  role="status"
-                  className="flex items-center gap-2 rounded-lg border border-ok/30 bg-ok-bg px-3 py-2 text-[13px] font-medium text-ok"
-                >
-                  <CheckCircle2 className="size-4 shrink-0" aria-hidden />
-                  Nothing is in the way. {name} can move now.
-                </div>
-              ) : (
-                <ul className="grid gap-2">
-                  {current.blockers.map((b, i) => (
-                    <BlockerLine
-                      key={`${b.code ?? "none"}-${i}`}
-                      blocker={b}
-                      franchiseeId={
-                        hasNoAdmin([b]) ? current.toFranchiseeId : undefined
-                      }
-                    />
-                  ))}
-                </ul>
-              )}
-
-              {current.warnings.length > 0 ? (
-                <ul className="grid gap-2">
-                  {current.warnings.map((w) => (
-                    <li
-                      key={w}
-                      className="flex gap-2 rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-[13px] text-warn"
-                    >
-                      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                      {w}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-
-              <p className="text-[13px] font-medium">
-                {coverageSummary(current.coverage)}
-              </p>
-              <div className="grid gap-2.5">
-                <ChipGroup
-                  label={`Stays (${current.coverage.keptCount})`}
-                  codes={current.coverage.kept}
-                />
-                <ChipGroup
-                  label={`Taken off (${current.coverage.trimmedCount})`}
-                  codes={current.coverage.trimmed}
-                  hint={`Outside ${current.toFranchiseeName}'s area, so these come off their coverage.`}
-                  struck
-                />
-                <ChipGroup
-                  label={`Added (${current.coverage.addedCount})`}
-                  codes={current.coverage.added}
-                />
-              </div>
-              {current.coverage.regionChanged && current.coverage.regionAfter ? (
-                <p className="text-[13px] text-ink-2">
-                  They will work in {current.coverage.regionAfter}.
-                </p>
-              ) : null}
-            </div>
+              <SelectTrigger id="transfer-to" className="w-full">
+                <SelectValue placeholder="Choose a franchisee">
+                  {() =>
+                    options.find((o) => o.value === toId)?.label ??
+                    "Choose a franchisee"
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {options.map((o) => (
+                  <SelectItem
+                    key={o.value}
+                    value={o.value}
+                    disabled={o.disabled}
+                  >
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
+        </Field>
 
-          {/* The picker. Opens itself on the ordinary case (nothing inside);
+        <Field data-invalid={reasonTouched && problem ? true : undefined}>
+          <FieldLabel htmlFor="transfer-reason" required>
+            Why is {name} moving?
+          </FieldLabel>
+          <Textarea
+            id="transfer-reason"
+            value={reason}
+            maxLength={MAX_REASON}
+            disabled={apply.isPending}
+            placeholder={`e.g. Moved to the east side of the city, which ${toName ?? "the new franchisee"} now covers`}
+            aria-invalid={reasonTouched && problem ? true : undefined}
+            aria-describedby="transfer-reason-hint"
+            onChange={(e) => setReason(e.target.value)}
+            onBlur={() => setReasonTouched(true)}
+          />
+          {reasonTouched && problem ? (
+            <FieldDescription
+              id="transfer-reason-hint"
+              role="alert"
+              className="text-danger"
+            >
+              {problem}
+            </FieldDescription>
+          ) : (
+            <FieldDescription id="transfer-reason-hint">
+              Kept on their record. At least 5 characters.
+            </FieldDescription>
+          )}
+        </Field>
+
+        {toId ? (
+          <section aria-labelledby="transfer-coverage" className="grid gap-3">
+            <h3
+              id="transfer-coverage"
+              className="text-[11px] font-bold tracking-[0.04em] text-ink-3 uppercase"
+            >
+              Where they will work
+            </h3>
+
+            {preview.isError && !current ? (
+              <div
+                role="alert"
+                className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-[13px] text-danger"
+              >
+                <XCircle className="size-4 shrink-0" aria-hidden />
+                Couldn&apos;t check that move.
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void preview.refetch()}
+                >
+                  Try again
+                </Button>
+              </div>
+            ) : !current ? (
+              <div aria-busy="true" className="grid gap-2">
+                <p className="text-[13px] text-ink-2">
+                  Checking what would change…
+                </p>
+                <Skeleton className="h-14 w-full rounded-lg" />
+              </div>
+            ) : (
+              <div
+                aria-busy={checking || undefined}
+                className={checking ? "grid gap-3 opacity-60" : "grid gap-3"}
+              >
+                {checking ? (
+                  <p className="text-[13px] text-ink-2">
+                    Checking what would change…
+                  </p>
+                ) : null}
+
+                {current.blockers.length === 0 ? (
+                  <div
+                    role="status"
+                    className="flex items-center gap-2 rounded-lg border border-ok/30 bg-ok-bg px-3 py-2 text-[13px] font-medium text-ok"
+                  >
+                    <CheckCircle2 className="size-4 shrink-0" aria-hidden />
+                    Nothing is in the way. {name} can move now.
+                  </div>
+                ) : (
+                  <ul className="grid gap-2">
+                    {current.blockers.map((b, i) => (
+                      <BlockerLine
+                        key={`${b.code ?? "none"}-${i}`}
+                        blocker={b}
+                        franchiseeId={
+                          hasNoAdmin([b]) ? current.toFranchiseeId : undefined
+                        }
+                      />
+                    ))}
+                  </ul>
+                )}
+
+                {current.warnings.length > 0 ? (
+                  <ul className="grid gap-2">
+                    {current.warnings.map((w) => (
+                      <li
+                        key={w}
+                        className="flex gap-2 rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-[13px] text-warn"
+                      >
+                        <AlertTriangle
+                          className="mt-0.5 size-4 shrink-0"
+                          aria-hidden
+                        />
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                <p className="text-[13px] font-medium">
+                  {coverageSummary(current.coverage)}
+                </p>
+                <div className="grid gap-2.5">
+                  <ChipGroup
+                    label={`Stays (${current.coverage.keptCount})`}
+                    codes={current.coverage.kept}
+                  />
+                  <ChipGroup
+                    label={`Taken off (${current.coverage.trimmedCount})`}
+                    codes={current.coverage.trimmed}
+                    hint={`Outside ${current.toFranchiseeName}'s area, so these come off their coverage.`}
+                    struck
+                  />
+                  <ChipGroup
+                    label={`Added (${current.coverage.addedCount})`}
+                    codes={current.coverage.added}
+                  />
+                </div>
+                {current.coverage.regionChanged &&
+                current.coverage.regionAfter ? (
+                  <p className="text-[13px] text-ink-2">
+                    They will work in {current.coverage.regionAfter}.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {/* The picker. Opens itself on the ordinary case (nothing inside);
               the link below is for the person who wants different pincodes
               than the ones that would stay. */}
-          {custom ? (
-            <div className="grid gap-3 rounded-lg border border-line bg-surface-2 p-3">
-              <CoverageFields
-                regionId={regionId}
-                pincodes={picked}
-                onRegionId={setRegionId}
-                onPincodes={setPicked}
-                limitTo={limitTo}
-                hasOtherFranchisees
-                className="grid gap-4 sm:grid-cols-2"
-              />
-              {nothingInside ? null : (
-                <div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={apply.isPending}
-                    onClick={() => {
-                      setCustom(false);
-                      setPicked([]);
-                    }}
-                  >
-                    Use their current pincodes again
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div>
+            {custom ? (
+              <div className="grid gap-3 rounded-lg border border-line bg-surface-2 p-3">
+                <CoverageFields
+                  regionId={regionId}
+                  pincodes={picked}
+                  onRegionId={setRegionId}
+                  onPincodes={setPicked}
+                  limitTo={limitTo}
+                  hasOtherFranchisees
+                  className="grid gap-4 sm:grid-cols-2"
+                />
+                {nothingInside ? null : (
+                  <div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={apply.isPending}
+                      onClick={() => {
+                        setCustom(false);
+                        setPicked([]);
+                      }}
+                    >
+                      Use their current pincodes again
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={apply.isPending || !current}
+                  onClick={() => setCustom(true)}
+                >
+                  Choose different pincodes instead
+                </Button>
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {applyError ? (
+          <div
+            role="alert"
+            className="flex gap-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-[13px] text-danger"
+          >
+            <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            {applyError}
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <DialogClose
+            render={
               <Button
                 type="button"
-                variant="ghost"
-                size="sm"
-                disabled={apply.isPending || !current}
-                onClick={() => setCustom(true)}
-              >
-                Choose different pincodes instead
-              </Button>
-            </div>
-          )}
-        </section>
-      ) : null}
-
-      {applyError ? (
-        <div
-          role="alert"
-          className="flex gap-2 rounded-lg border border-danger/30 bg-danger-bg px-3 py-2 text-[13px] text-danger"
-        >
-          <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
-          {applyError}
-        </div>
-      ) : null}
-
-      <DialogFooter>
-        <DialogClose
-          render={<Button type="button" variant="outline" disabled={apply.isPending} />}
-        >
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={!confirmable}>
-          {apply.isPending ? <Spinner data-icon="inline-start" /> : null}
-          {apply.isPending ? "Moving…" : `Move ${name}`}
-        </Button>
-      </DialogFooter>
+                variant="outline"
+                disabled={apply.isPending}
+              />
+            }
+          >
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={!confirmable}>
+            {apply.isPending ? <Spinner data-icon="inline-start" /> : null}
+            {apply.isPending ? "Moving…" : `Move ${name}`}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

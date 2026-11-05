@@ -11,8 +11,10 @@ import { JobHistoryTable } from "@/components/technicians/JobHistoryTable";
 import { TechnicianFormDialog } from "@/components/technicians/TechnicianFormDialog";
 import { TechTransferHistory } from "@/components/technicians/TechTransferHistory";
 import { TransferTechnicianDialog } from "@/components/technicians/TransferTechnicianDialog";
+import { TechnicianRulesPanel } from "@/components/technicians/TechnicianRulesPanel";
 import { UpiChangePanel } from "@/components/technicians/UpiChangePanel";
 import { BaseLocationPanel } from "@/components/technicians/BaseLocationPanel";
+import { PartsAddressPanel } from "@/components/technicians/PartsAddressPanel";
 import {
   TechOnboardingCard,
   TechOnboardingCardSkeleton,
@@ -83,6 +85,14 @@ export default function TechnicianProfilePage() {
      waiting for the record before asking for the jobs would put a second
      round trip in front of the table for no reason. */
   const jobs = useTechnicianJobs(id);
+
+  /* Epic 3 — holding back someone's pay is a payer's call: the portal's own
+     franchisee admin, or National Head and above on the staff door (the API
+     holds the same floor with a 403). Presentation only. */
+  const canHold =
+    canEdit &&
+    (workspace === "franchise" ||
+      (!!me.data && ALL_INDIA_ROLES.has(me.data.role)));
 
   // Into the topbar search's "Recently seen" — a technician reached from the
   // roster or from a ticket counts as seen, not only one found by searching.
@@ -186,11 +196,15 @@ export default function TechnicianProfilePage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[1fr_1.7fr]">
-          {isLoading || !tech ? (
-            <Skeleton className="h-125 rounded-xl" />
-          ) : (
-            <TechProfileHeader tech={tech} />
-          )}
+          {/* The right column runs long (rules, history); keep the profile
+              card in view beside it instead of leaving the left side blank. */}
+          <div className="self-start lg:sticky lg:top-4">
+            {isLoading || !tech ? (
+              <Skeleton className="h-125 rounded-xl" />
+            ) : (
+              <TechProfileHeader tech={tech} />
+            )}
+          </div>
 
           <div className="flex flex-col gap-3.5">
             {/* Task 08 — the reader just lost an explanation for the missing
@@ -247,6 +261,10 @@ export default function TechnicianProfilePage() {
               <BaseLocationPanel tech={tech} canEdit={canEdit} />
             )}
 
+            {/* Epic 6 — where spare parts are delivered, next to the base. The
+                panel hides itself for a caller the server withheld it from. */}
+            {tech ? <PartsAddressPanel tech={tech} canEdit={canEdit} /> : null}
+
             {/* §5.10 — after the onboarding card, before the job history: a
                 payroll action belongs with the person, not under their work.
                 Rendered only for the gate above; a skeleton for it would be a
@@ -254,6 +272,16 @@ export default function TechnicianProfilePage() {
                 who will never see one. */}
             {tech && canDownloadStatement ? (
               <DownloadStatementCard tech={tech} />
+            ) : null}
+
+            {/* Epic 3 — this technician's own rules, minimum redeemable and
+                holding. Under the money cards, before the job history. */}
+            {tech ? (
+              <TechnicianRulesPanel
+                technicianId={tech.id}
+                canEdit={canEdit}
+                canHold={canHold}
+              />
             ) : null}
 
             {/* The skeleton is the real table, row for row — never a spinner.

@@ -1,5 +1,12 @@
 import type { LucideIcon } from "lucide-react";
-import { BadgeIndianRupee, Building2, Globe2, SlidersHorizontal } from "lucide-react";
+import {
+  BadgeIndianRupee,
+  Building2,
+  Globe2,
+  LocateFixed,
+  ReceiptText,
+  SlidersHorizontal,
+} from "lucide-react";
 
 /**
  * The superadmin console's navigation.
@@ -24,7 +31,13 @@ export interface SuperadminNavItem {
 }
 
 export const SUPERADMIN_NAV: SuperadminNavItem[] = [
+  // The landing page (`SHELL_PATHS.superadmin.home`): the first entry. Its path
+  // is not `/transactions` - that is the company console's, behind another
+  // guard - so the two surfaces never claim one URL.
+  { label: "Transactions", to: "/all-transactions", icon: ReceiptText },
   { label: "Companies", to: "/companies", icon: Building2 },
+  // Epic 4. Not `/live-technicians`: that path is the company console's.
+  { label: "Live technicians", to: "/all-live-technicians", icon: LocateFixed },
   // Companies that say they have paid for credits. The badge is how many are
   // waiting for a decision — the same number the header's bell carries.
   {

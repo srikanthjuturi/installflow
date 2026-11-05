@@ -24,6 +24,15 @@ _TEMPLATES = Path(__file__).parent / "templates"
 _NAME = re.compile(r"^[a-z0-9_]+$")
 
 
+class Raw(str):
+    """Markup the CALLER has already escaped (a table built row by row).
+
+    Everything else passed to `render` is escaped; wrapping a value in `Raw` is
+    the one way to opt out, and the only honest use is HTML the caller built
+    with `html.escape` on every dynamic piece.
+    """
+
+
 def render(template: str, /, **values: object) -> str:
     """Fill one template from `templates/`. Every value is HTML-escaped.
 
@@ -42,5 +51,8 @@ def render(template: str, /, **values: object) -> str:
     # Relative to this module, never to the working directory — that is what
     # survives copytree into the deploy zip and Oryx's extraction to /tmp.
     source = (_TEMPLATES / f"{template}.html").read_text(encoding="utf-8")
-    escaped = {k: html.escape(str(v), quote=True) for k, v in values.items()}
+    escaped = {
+        k: (str(v) if isinstance(v, Raw) else html.escape(str(v), quote=True))
+        for k, v in values.items()
+    }
     return Template(source).substitute(escaped)

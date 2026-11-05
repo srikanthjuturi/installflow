@@ -24,6 +24,7 @@ levels" in the response shape itself.
 """
 
 import datetime
+import unicodedata
 import uuid
 from typing import Annotated
 
@@ -49,6 +50,20 @@ MAX_SERIAL_LENGTH = 64
 #: be using the spreadsheet importer, which streams and reports per-row rejects
 #: instead of failing the whole request on the first bad line.
 MAX_SERIALS_PER_REQUEST = 500
+
+
+def _has_disallowed_character(value: str) -> str | None:
+    """First char that is neither letter/number/mark nor '-', else None.
+
+    `str.isalnum()` is the wrong tool here — it is False for Devanagari vowel
+    signs and NFD diacritics, which are legitimate serial characters. Unicode's
+    own general category is what actually distinguishes "a mark that belongs to
+    a letter" from "a symbol or punctuation that doesn't".
+    """
+    for ch in value:
+        if unicodedata.category(ch)[0] not in ("L", "N", "M") and ch != "-":
+            return ch
+    return None
 
 
 def _check_icon(value: str) -> str:
@@ -613,6 +628,11 @@ def _clean_serials(values: list[str]) -> list[str]:
             raise ValueError(
                 f"{value[:20]}… is longer than {MAX_SERIAL_LENGTH} characters"
             )
+        bad = _has_disallowed_character(value)
+        if bad is not None:
+            raise ValueError(
+                f"{value[:20]}… contains '{bad}' — only letters, numbers and '-' are allowed"
+            )
         key = value.lower()
         if key in seen:
             continue
@@ -646,10 +666,16 @@ class SerialAddResult(AppModel):
     `duplicates` is not an error. Re-pasting a block that overlaps what is
     already loaded is the normal way somebody tops a model up, so the added ones
     land and the rest are reported rather than refused.
+
+    `onOtherProduct` is a different thing from `duplicates`: a serial already on
+    THIS model is a harmless re-paste, but one owned by a DIFFERENT model under
+    the new company-wide uniqueness rule is excluded from the insert entirely —
+    it is somebody else's unit, not a top-up.
     """
 
     added: int
     duplicates: int
+    onOtherProduct: int = 0
     total: int
 
 
@@ -717,6 +743,13 @@ class SerialMatchOut(AppModel):
     serial: str
 
 
+def _check_serial_chars(value: str) -> str:
+    bad = _has_disallowed_character(value)
+    if bad is not None:
+        raise ValueError(f"Contains '{bad}' — only letters, numbers and '-' are allowed")
+    return value
+
+
 class SerialUpdateRequest(BaseModel):
     """Correct one serial in place.
 
@@ -726,4 +759,78 @@ class SerialUpdateRequest(BaseModel):
     would silently restamp both to whoever fixed the spelling.
     """
 
-    serial: Annotated[str, Field(min_length=1, max_length=MAX_SERIAL_LENGTH)]
+    serial: Annotated[
+        str,
+        Field(min_length=1, max_length=MAX_SERIAL_LENGTH),
+        AfterValidator(_check_serial_chars),
+    ]
+
+
+# ── the bulk product importer ─────────────────────────────────────────────────
+#
+# The same two-pass shape the geography, serial and ticket importers all use —
+# see `features/masters/import_service.py`. One row is one PRODUCT: a category
+# chain it files under, a brand, a name, and the rest of what `ModelCreateRequest`
+# / `ProductSubmitRequest` already ask for. Re-uploading the same sheet UPDATES
+# the row it already created (matched on node + brand + name) rather than
+# refusing a duplicate.
+
+
+class ProductImportReject(AppModel):
+    """One row the importer will not write, and why.
+
+    The same shape `TicketImportReject` carries, so the console's
+    `RejectsTable` renders both without a second column mapping.
+    """
+
+    row: int
+    code: str
+    reason: str
+    field: str | None = None
+    value: str | None = None
+
+
+class CategoryToCreateOut(AppModel):
+    """A category chain the sheet names that the catalogue does not hold yet.
+
+    The same shape as the ticket importer's `CategoryToCreate` — the console's
+    confirmation tree is shared between the two importers.
+    """
+
+    path: str
+    newSegments: list[str]
+    depth: int
+    isLeaf: bool
+    markedLeaf: bool
+    newMainSubcategory: bool
+    rowCount: int
+
+
+class ProductImportReport(AppModel):
+    """What an upload would do, or what it did.
+
+    A dry run writes nothing and returns exactly what the commit would do, so
+    every figure here is the server's own count — nothing is parsed in the
+    browser.
+    """
+
+    dryRun: bool
+    #: Echoed back on the commit so the numbers just confirmed describe THIS
+    #: file — see `ProductImportReject` sibling `TicketImportReport.fileDigest`.
+    fileDigest: str
+    rowsRead: int
+    #: What a commit of this file would create or update. The commit button's
+    #: numbers.
+    toCreate: int
+    toUpdate: int
+    #: What it did. Both 0 on a dry run.
+    created: int = 0
+    updated: int = 0
+    rejected: int = 0
+    #: Capped server-side; `rejected` carries the true total.
+    rejects: list[ProductImportReject] = Field(default_factory=list)
+    categoriesToCreate: list[CategoryToCreateOut] = Field(default_factory=list)
+    categoriesCreated: int = 0
+    #: Two rows naming the same product (same chain, brand and name) — the
+    #: second is rejected rather than written twice.
+    duplicateRowsInFile: int = 0

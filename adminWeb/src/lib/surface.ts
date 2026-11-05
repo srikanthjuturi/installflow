@@ -59,7 +59,8 @@ export const SHELL_PATHS: Record<
   { home: string; notifications: string; account: string; password: string }
 > = {
   superadmin: {
-    home: "/companies",
+    // Transactions is the platform's landing page; Companies is one click away.
+    home: "/all-transactions",
     notifications: "/notifications",
     account: "/account",
     password: "/account/password",

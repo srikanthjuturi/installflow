@@ -13,6 +13,7 @@ export const qk = {
   // Under `me` on purpose: a manager's decision on a UPI change arrives as a
   // push that invalidates `qk.me()`, and this has to move with it.
   payoutAccount: () => ['me', 'payout-account'] as const,
+  partsAddress: () => ['me', 'parts-address'] as const,
 
   pool: () => ['jobs', 'pool'] as const,
   poolOffer: (id: string) => ['jobs', 'pool', id] as const,

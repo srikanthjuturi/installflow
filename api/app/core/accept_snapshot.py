@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import technician_rules
 from app.core.speed import SpeedTerms
 from app.core.speed_rules import resolve_terms
 from app.core.travel import Point, compute_travel
@@ -56,7 +57,7 @@ def base_point(technician) -> Point | None:
 
 def assemble(*, now: datetime.datetime, technician_id: uuid.UUID,
              franchisee_id: uuid.UUID, technician_type: str, travel: dict,
-             speed: dict | None) -> dict:
+             speed: dict | None, overrides: dict | None = None) -> dict:
     """The whole snapshot, index §3.5 keys; `speed` is the terms frozen here
     (S5, Task 11) or None when no rule applied — W1 keeps an empty matrix
     stamping None, exactly as Task 10 wrote until Task 11 filled this in.
@@ -65,7 +66,7 @@ def assemble(*, now: datetime.datetime, technician_id: uuid.UUID,
     formatter and the app's both expect a wire timestamp to carry.
     """
     stamp = now.astimezone(datetime.timezone.utc).isoformat()
-    return {
+    snapshot = {
         "acceptedAt": stamp.replace("+00:00", "Z"),
         "technicianId": str(technician_id),
         "franchiseeId": str(franchisee_id),
@@ -73,6 +74,12 @@ def assemble(*, now: datetime.datetime, technician_id: uuid.UUID,
         "travel": travel,
         "speed": speed,
     }
+    # Epic 3: the technician's own payout / penalty / bonus overrides, frozen with
+    # the rest. Absent (not null) when there are none, so a job with no overrides
+    # has exactly the snapshot it always had.
+    if overrides:
+        snapshot["overrides"] = overrides
+    return snapshot
 
 
 @dataclass(frozen=True)
@@ -163,7 +170,7 @@ def speed_of(snapshot: dict | None) -> SpeedTerms | None:
         return None
 
     matched_on = speed.get("matchedOn")
-    if matched_on not in ("model", "node"):
+    if matched_on not in ("model", "node", "technician"):
         return None
 
     def _ids(key: str) -> uuid.UUID | None:
@@ -272,6 +279,9 @@ async def build_accept_snapshot(
         franchisee_id=technician.franchisee_id,        # Task 01 column
         technician_type=technician.technician_type,    # Task 01 column
     )
+    # Epic 3: this technician's own rules, if any, laid over the above.
+    own = await technician_rules.load(db, ticket.company_id, technician.id)
+    rule = technician_rules.apply_to_travel(rule, own)
     # Task 11 (S5): the speed terms freeze HERE, at accept, from the payer's
     # own matrix — a rule edited later restates nothing already stamped, and
     # the closure is judged on these four figures for as long as the job is
@@ -284,6 +294,8 @@ async def build_accept_snapshot(
         technician_type=technician.technician_type,
         model_id=ticket.model_id, node_path_ids=ticket.node_path_ids,
     )
+    # A technician-level speed agreement replaces the matrix match entirely.
+    terms = technician_rules.speed_terms(own) or terms
     pin_lat = pin_lng = None
     if ticket.latitude is None:                         # only then is the pincode needed
         pin_lat, pin_lng = (await db.execute(
@@ -299,9 +311,10 @@ async def build_accept_snapshot(
         franchisee_id=technician.franchisee_id,
         technician_type=technician.technician_type,
         travel=travel,
+        overrides=technician_rules.build_overrides(own),
         speed=(
             None if terms is None else {
-                "ruleId": str(terms.rule_id), "matchedOn": terms.matched_on,
+                "ruleId": str(terms.rule_id) if terms.rule_id else None, "matchedOn": terms.matched_on,
                 "matchedId": str(terms.matched_id),
                 "rewardWithinHours": terms.reward_within_hours,
                 "penaltyAfterHours": terms.penalty_after_hours,

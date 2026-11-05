@@ -8,13 +8,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { FieldGrid } from "@/components/shared/FieldGrid";
 import { FormSection } from "@/components/shared/FormSection";
 import { useFieldConflict } from "@/components/shared/useFieldConflict";
@@ -63,7 +60,7 @@ export function CompanyFormDialog({
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-4xl">
         {undelivered ? (
           <TemporaryPasswordPanel
             heading="Created, but the email didn't send"
@@ -332,7 +329,10 @@ function CompanyForm({
         .filter(Boolean)
         .join(" ") || undefined;
     return (
-      <Field data-invalid={message ? true : undefined} className={opts?.className}>
+      <Field
+        data-invalid={message ? true : undefined}
+        className={opts?.className}
+      >
         <FieldLabel htmlFor={name} required={opts?.required}>
           {label}
         </FieldLabel>
@@ -455,17 +455,24 @@ function CompanyForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate className="grid gap-5">
-      <DialogHeader>
-        <DialogTitle>{isEdit ? `Edit ${company?.name}` : "Add company"}</DialogTitle>
-        <DialogDescription>
-          {isEdit
-            ? "Update this company's profile and statutory details."
-            : "Create a company and its first admin. We email the admin a temporary password to sign in with."}
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col gap-5"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>
+            {isEdit ? `Edit ${company?.name}` : "Add company"}
+          </DialogTitle>
+          <DialogDescription>
+            {isEdit
+              ? "Update this company's profile and statutory details."
+              : "Create a company and its first admin. We email the admin a temporary password to sign in with."}
+          </DialogDescription>
+        </DialogHeader>
 
-      {/* STATUTORY IDENTITY LEADS, and the two sections it feeds follow it —
+        {/* STATUTORY IDENTITY LEADS, and the two sections it feeds follow it —
           the same order the vendor dialog uses, and for the same reason. The
           GSTIN identifies the company, so its name, its PAN, its registration's
           standing and its registered address are all answerable from it.
@@ -474,108 +481,109 @@ function CompanyForm({
 
           The admin's details come last: they are the one thing on this form
           that no registry can answer. */}
-      <FormSection
-        legend="Statutory identity"
-        hint="As printed on the GST certificate."
-      >
-        <FieldGrid className={COLS}>
-          {renderField("gstNumber", "GSTIN", {
-            required: true,
-            mono: true,
-            maxLength: 15,
-            placeholder: "29ABCDE1234F1Z5",
-            hint: "15-character GST number.",
-            error: gstError,
-            note: gstNote,
-          })}
-          {renderField("pan", "PAN", {
-            required: true,
-            mono: true,
-            maxLength: 10,
-            placeholder: "ABCDE1234F",
-            hint: "The ten characters inside the GSTIN.",
-          })}
-          {renderField("gstCompanyStatus", "GST company status", {
-            required: true,
-            placeholder: "Active",
-            hint: "The registration's standing at the GST portal.",
-          })}
-        </FieldGrid>
-      </FormSection>
-
-      <FormSection legend="Company">
-        <FieldGrid className={COLS}>
-          {renderField("name", "Company name", {
-            required: true,
-            placeholder: "Acme Installations Pvt Ltd",
-            autoComplete: "organization",
-          })}
-          {renderField("email", "Contact / admin email", {
-            required: true,
-            type: "email",
-            placeholder: "admin@acme.com",
-            autoComplete: "email",
-            hint: isEdit ? undefined : "Becomes the admin's login email.",
-          })}
-          {renderField("phone", "Phone", {
-            required: true,
-            type: "tel",
-            placeholder: "98200 11001",
-            autoComplete: "tel",
-            hint: "10 digits. Spaces and a +91 are fine.",
-          })}
-        </FieldGrid>
-      </FormSection>
-
-      <FormSection legend="Registered address">
-        <FieldGrid className={COLS}>
-          {/* The street line takes the whole row, as a textarea — the same
-              control the vendor form uses, and for the same reasons: it is the
-              longest value here, and a line break in a pasted letterhead
-              address carries meaning. Line 2 is gone; this box holds both. */}
-          {renderField("addressLine1", "Building, street and area", {
-            required: true,
-            textarea: true,
-            placeholder: "Acme House, 14th Floor\nChakala, Andheri East",
-            className: "sm:col-span-2 lg:col-span-3",
-          })}
-          {renderField("city", "City", {
-            required: true,
-            autoComplete: "address-level2",
-          })}
-          {renderField("state", "State", {
-            required: true,
-            autoComplete: "address-level1",
-          })}
-          {renderField("pincode", "PIN code", {
-            required: true,
-            placeholder: "560001",
-            autoComplete: "postal-code",
-          })}
-        </FieldGrid>
-      </FormSection>
-
-      {isEdit ? null : (
-        <FormSection legend="Admin login">
+        <FormSection
+          legend="Statutory identity"
+          hint="As printed on the GST certificate."
+        >
           <FieldGrid className={COLS}>
-            {renderField("adminName", "Admin name", {
-              placeholder: "Full name",
-              autoComplete: "name",
+            {renderField("gstNumber", "GSTIN", {
+              required: true,
+              mono: true,
+              maxLength: 15,
+              placeholder: "29ABCDE1234F1Z5",
+              hint: "15-character GST number.",
+              error: gstError,
+              note: gstNote,
+            })}
+            {renderField("pan", "PAN", {
+              required: true,
+              mono: true,
+              maxLength: 10,
+              placeholder: "ABCDE1234F",
+              hint: "The ten characters inside the GSTIN.",
+            })}
+            {renderField("gstCompanyStatus", "GST company status", {
+              required: true,
+              placeholder: "Active",
+              hint: "The registration's standing at the GST portal.",
             })}
           </FieldGrid>
         </FormSection>
-      )}
 
-      {/* The failure is reported in the toaster (App.tsx), not here. */}
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={isSubmitting || gstRefusal}>
-          {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
-          {isEdit ? "Save changes" : "Create company"}
-        </Button>
-      </DialogFooter>
+        <FormSection legend="Company">
+          <FieldGrid className={COLS}>
+            {renderField("name", "Company name", {
+              required: true,
+              placeholder: "Acme Installations Pvt Ltd",
+              autoComplete: "organization",
+            })}
+            {renderField("email", "Contact / admin email", {
+              required: true,
+              type: "email",
+              placeholder: "admin@acme.com",
+              autoComplete: "email",
+              hint: isEdit ? undefined : "Becomes the admin's login email.",
+            })}
+            {renderField("phone", "Phone", {
+              required: true,
+              type: "tel",
+              placeholder: "98200 11001",
+              autoComplete: "tel",
+              hint: "10 digits. Spaces and a +91 are fine.",
+            })}
+          </FieldGrid>
+        </FormSection>
+
+        <FormSection legend="Registered address">
+          <FieldGrid className={COLS}>
+            {/* The street line takes the whole row, as a textarea — the same
+              control the vendor form uses, and for the same reasons: it is the
+              longest value here, and a line break in a pasted letterhead
+              address carries meaning. Line 2 is gone; this box holds both. */}
+            {renderField("addressLine1", "Building, street and area", {
+              required: true,
+              textarea: true,
+              placeholder: "Acme House, 14th Floor\nChakala, Andheri East",
+              className: "sm:col-span-2 lg:col-span-3",
+            })}
+            {renderField("city", "City", {
+              required: true,
+              autoComplete: "address-level2",
+            })}
+            {renderField("state", "State", {
+              required: true,
+              autoComplete: "address-level1",
+            })}
+            {renderField("pincode", "PIN code", {
+              required: true,
+              placeholder: "560001",
+              autoComplete: "postal-code",
+            })}
+          </FieldGrid>
+        </FormSection>
+
+        {isEdit ? null : (
+          <FormSection legend="Admin login">
+            <FieldGrid className={COLS}>
+              {renderField("adminName", "Admin name", {
+                placeholder: "Full name",
+                autoComplete: "name",
+              })}
+            </FieldGrid>
+          </FormSection>
+        )}
+
+        {/* The failure is reported in the toaster (App.tsx), not here. */}
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={isSubmitting || gstRefusal}>
+            {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
+            {isEdit ? "Save changes" : "Create company"}
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

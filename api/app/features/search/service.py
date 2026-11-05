@@ -18,6 +18,7 @@ ownership rather than geography, and each slice states its own version of it, so
 a cross-entity read for a vendor would have to re-derive all five.
 """
 
+import re
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -89,6 +90,16 @@ def _term(search: str | None) -> str | None:
     return f"%{cleaned}%"
 
 
+#: A ticket code's separators, for `_tickets_stmt` below — a second copy of
+#: `tickets.service._CODE_SEARCH_SEPARATORS`, not an import: slices do not
+#: import each other (see the module docstring and the note by
+#: `visible_pincodes` below). `-` because the code itself is hyphen-separated;
+#: space so "GTD INST 0054" finds "GTD-INST-0054" without the caller needing to
+#: know which separator the stored code uses; `_` and `%` so neither is read as
+#: a LIKE wildcard once stripped.
+_CODE_SEPARATORS = re.compile(r"[-_ %]")
+
+
 def _text(value: str | None) -> str | None:
     """Blank subtitles are absent subtitles — the row should close up, not gap."""
     cleaned = (value or "").strip()
@@ -111,6 +122,26 @@ def _join(*parts: str | None) -> str | None:
 async def _tickets_stmt(
     db: AsyncSession, principal: Principal, term: str
 ) -> Select:
+    # `term` is always `%cleaned%` (see `_term`). A ticket code is matched
+    # separator-insensitively rather than against the raw term: ops as often
+    # type or paste a code with spaces, or none at all, as with the hyphens
+    # it is shown with. `cleaned` normalizes to the superset of what the raw
+    # term would already match, so this replaces rather than adds to the plain
+    # comparison. Guarded on non-empty: a search of pure separators (e.g. "--")
+    # would otherwise normalize to "" and match every code in the company.
+    clauses = [
+        func.lower(Ticket.customer_name).like(term),
+        func.lower(Ticket.customer_phone).like(term),
+        Ticket.pincode.like(term),
+        func.lower(Ticket.serial_number).like(term),
+    ]
+    normalized = _CODE_SEPARATORS.sub("", term[1:-1])
+    if normalized:
+        clauses.append(
+            func.lower(
+                func.regexp_replace(Ticket.code, _CODE_SEPARATORS.pattern, "", "g")
+            ).like(f"%{normalized}%")
+        )
     stmt = select(
         Ticket.id,
         Ticket.code,
@@ -120,13 +151,7 @@ async def _tickets_stmt(
     ).where(
         Ticket.company_id == principal.company_id,
         Ticket.deleted_at.is_(None),
-        or_(
-            func.lower(Ticket.code).like(term),
-            func.lower(Ticket.customer_name).like(term),
-            func.lower(Ticket.customer_phone).like(term),
-            Ticket.pincode.like(term),
-            func.lower(Ticket.serial_number).like(term),
-        ),
+        or_(*clauses),
     )
 
     # The same rule `tickets.scoped()` applies for staff. Not that function,

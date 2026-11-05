@@ -76,6 +76,12 @@ export const ticketKeys = {
    *  here, but a ticket change does, and an answer that old is worth re-asking. */
   serialCheck: (id: string, serial: string) =>
     ["tickets", "serialCheck", id, serial] as const,
+  /** E5: the rail's "how many high-priority tickets are still unassigned"
+   *  count — under the same prefix as everything else here, so an
+   *  assignment (or the socket's `ticket.changed`) invalidating `tickets`
+   *  clears this along with the list it is drawn from. */
+  highPriorityPendingCount: () =>
+    ["tickets", "highPriorityPendingCount"] as const,
 };
 
 /**

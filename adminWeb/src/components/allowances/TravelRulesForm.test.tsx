@@ -95,7 +95,9 @@ describe("TravelRulesForm", () => {
 
   it("a rate with a ₹0 maximum shows the server's sentence and sends nothing", async () => {
     renderForm();
-    const max = (await screen.findAllByLabelText("Most per job (₹)"))[0];
+    const max = (
+      await screen.findAllByLabelText("Maximum Travel Allowance per Job (₹)")
+    )[0];
     fireEvent.change(max, { target: { value: "0" } });
     fireEvent.click(screen.getByRole("button", { name: "Save travel rules" }));
     expect(
@@ -107,10 +109,10 @@ describe("TravelRulesForm", () => {
   });
 
   it.each([
-    ["Road factor (%)", "99", "Between 100 % and 300 %"],
-    ["Road factor (%)", "301", "Between 100 % and 300 %"],
-    ["Pay for every (km)", "0", "Between 1 and 50 km"],
-    ["Pay for every (km)", "51", "Between 1 and 50 km"],
+    ["Road Distance Adjustment (%)", "99", "Between 100 % and 300 %"],
+    ["Road Distance Adjustment (%)", "301", "Between 100 % and 300 %"],
+    ["Chargeable Distance Interval (km)", "0", "Between 1 and 50 km"],
+    ["Chargeable Distance Interval (km)", "51", "Between 1 and 50 km"],
   ])("refuses %s = %s on the field", async (label, value, message) => {
     renderForm();
     const box = (await screen.findAllByLabelText(label))[0];

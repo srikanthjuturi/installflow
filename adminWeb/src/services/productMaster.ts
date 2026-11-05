@@ -14,6 +14,7 @@
 import type {
   CreateModelInput,
   CreateNodeInput,
+  ProductImportReport,
   ProductModelSerial,
   ProductNode,
   ResubmitModelInput,
@@ -361,3 +362,88 @@ export function lookupSerial(
  * it lower here and the list would stop early believing it was done.
  */
 export const SERIAL_PAGE_SIZE = 25;
+
+/* ── the bulk product importer ─────────────────────────────────────────────
+ *
+ * The fourth importer beside geography, serials and tickets — see
+ * `features/masters/import_service.py`. Re-uploading the same sheet UPDATES
+ * the products it already wrote (matched on category, brand and name)
+ * instead of refusing a duplicate, so there is no "already imported" tile the
+ * way the ticket importer needs one.
+ */
+
+/** Same ceiling and accepted kinds as every other sheet importer here. */
+export const MAX_PRODUCT_IMPORT_BYTES = 8 * 1024 * 1024;
+export const PRODUCT_IMPORT_ACCEPT = ".xlsx,.csv";
+
+export interface ProductImportOptions {
+  dryRun: boolean;
+  /** The confirmation, as a positive assertion. Defaults to false server-side. */
+  createCategories?: boolean;
+  /** The dry run's digest, echoed on the commit. */
+  expectedDigest?: string;
+  /** Staff only: whose products these are. Absent on the vendor's own route. */
+  vendorId?: string;
+}
+
+function productImportQuery(o: ProductImportOptions): string {
+  const q = new URLSearchParams({ dryRun: String(o.dryRun) });
+  if (o.createCategories) q.set("createCategories", "true");
+  if (o.expectedDigest) q.set("expectedDigest", o.expectedDigest);
+  return q.toString();
+}
+
+/**
+ * Upload the sheet. `dryRun` validates and writes nothing, which is what the
+ * preview sends; the same file is sent again to commit.
+ *
+ * Which ROUTE is the tenancy boundary, not a parameter — the same rule
+ * `importTickets` follows. A vendor's own upload goes to
+ * `/masters/portal/products/import`, which has no field a vendor id could
+ * arrive in; staff go to `/masters/products/import` and name one as a form
+ * field, which the server resolves through a company-scoped loader.
+ */
+export function importProducts(
+  file: File,
+  options: ProductImportOptions
+): Promise<ProductImportReport> {
+  const form = new FormData();
+  // A part with no filename is not treated as a file upload at all, and the
+  // server reads the extension off it to choose the parser.
+  form.append("file", file, file.name);
+  if (options.vendorId) {
+    form.append("vendorId", options.vendorId);
+    return apiUpload<ProductImportReport>(
+      `/masters/products/import?${productImportQuery(options)}`,
+      form
+    );
+  }
+  return apiUpload<ProductImportReport>(
+    `/masters/portal/products/import?${productImportQuery(options)}`,
+    form
+  );
+}
+
+/**
+ * Download the starter .xlsx.
+ *
+ * Fetched and turned into a blob rather than linked with a plain `<a href>`:
+ * the endpoint is guarded like every other, and a bare link carries no
+ * `Authorization` header, so it would download a 401 page named `products.xlsx`.
+ */
+export async function downloadProductTemplate(): Promise<void> {
+  const blob = await apiGetBlob("/masters/products/template");
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "products.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    // Revoked on the next tick, not immediately: Safari has not started the
+    // download by the time click() returns.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+}

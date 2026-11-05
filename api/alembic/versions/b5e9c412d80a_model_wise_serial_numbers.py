@@ -39,6 +39,11 @@ Case-insensitive because `jobs.service.serial_mismatch` already compares the
 photographed serial trimmed and lower-cased. Two rules disagreeing about case
 would be worse than one.
 
+⚠ `d4f8a21b9c56` later supersedes the UNIQUE this revision creates: uniqueness
+moved from `(company_id, product_model_id, lower(serial))` to company-wide
+`(company_id, lower(serial))`. This revision's code is left as it ran — it is
+history, not the current rule.
+
 Revision ID: b5e9c412d80a
 Revises: d6a1f38b04e5
 Create Date: 2026-09-07

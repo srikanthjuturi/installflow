@@ -33,6 +33,7 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
+    Form,
     HTTPException,
     Query,
     UploadFile,
@@ -58,7 +59,7 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
-from app.features.masters import service
+from app.features.masters import import_service, service
 from app.features.masters.schemas import (
     ApprovalRequest,
     BrandApprovalOut,
@@ -68,6 +69,7 @@ from app.features.masters.schemas import (
     NodePortalUpdateRequest,
     NodeUpdateRequest,
     ProductApprovalOut,
+    ProductImportReport,
     ProductModelSerialOut,
     ProductNodeOut,
     ProductResubmitRequest,
@@ -241,6 +243,149 @@ async def delete_model(
 ) -> ApiEnvelope[None]:
     await service.delete_model(db, principal, model_id)
     return envelope(None, message="Product model removed")
+
+
+# ── the bulk product importer ─────────────────────────────────────────────────
+#
+# `features/masters/import_service.py` — the fourth member of the family beside
+# geography, serials and tickets. ONE sheet, TWO doors, the same tenancy split
+# every importer here keeps: a staff caller names which vendor on the request
+# (`vendorId`, a Form field — there is no column for it in the sheet, the same
+# reason `tickets.import_service` gives); a vendor caller is pinned to its own,
+# never from the body. Staff create APPROVED, PRICED products — `create_model`'s
+# shape; a vendor's upload creates PENDING, UNPRICED ones — `submit_model`'s.
+
+
+async def _read_product_upload(file: UploadFile) -> tuple[bytes, str]:
+    """The extension and size guards both the staff and the portal route apply."""
+    name = (file.filename or "").lower()
+    if not name.endswith((".xlsx", ".csv")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Upload an .xlsx or .csv file",
+        )
+    # Read with a ceiling rather than trusting the declared size: a client can
+    # claim any content-length, and the body would otherwise be in memory
+    # before any check that came after it. Lifted verbatim from
+    # `geo.import_geography`.
+    data = await file.read(import_service.MAX_PRODUCT_UPLOAD_BYTES + 1)
+    if len(data) > import_service.MAX_PRODUCT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "The file must be under "
+                f"{import_service.MAX_PRODUCT_UPLOAD_BYTES // (1024 * 1024)} MB"
+            ),
+        )
+    return data, name
+
+
+def _product_import_message(report: ProductImportReport) -> str:
+    if report.dryRun:
+        return "Checked — nothing was saved"
+    parts = []
+    if report.created:
+        parts.append(f"{report.created} product{'' if report.created == 1 else 's'} added")
+    if report.updated:
+        parts.append(f"{report.updated} updated")
+    if report.categoriesCreated:
+        parts.append(f"{report.categoriesCreated} categories created")
+    return ", ".join(parts) if parts else "Nothing to import"
+
+
+@router.get("/products/template")
+async def product_template(principal: CanView) -> StreamingResponse:
+    """A starter .xlsx with the column headings and the rules. Either key opens it.
+
+    On `masters.view`, not staff-only — the same reasoning
+    `GET /tickets/import/template` gives: the file carries no data, headers and
+    two example rows identical for every caller, and gating it harder than the
+    screen it accompanies would only mean somebody guessing at the columns.
+    """
+    return StreamingResponse(
+        import_service.build_product_template(),
+        media_type=(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ),
+        headers={"Content-Disposition": 'attachment; filename="products.xlsx"'},
+    )
+
+
+@router.post(
+    "/products/import",
+    response_model=ApiEnvelope[ProductImportReport],
+    dependencies=[IsStaff],
+)
+async def import_products(
+    db: Db,
+    principal: CanEdit,
+    vendorId: Annotated[uuid.UUID, Form()],
+    file: Annotated[UploadFile, File()],
+    dryRun: Annotated[bool, Query()] = True,
+    createCategories: Annotated[bool, Query()] = False,
+    expectedDigest: Annotated[str | None, Query()] = None,
+) -> ApiEnvelope[ProductImportReport]:
+    """Staff bulk-add or bulk-update one vendor's products. `dryRun` writes nothing.
+
+    A row matching an EXISTING product may only update one that is already
+    `approved` — a `pending` or `rejected` row is `masters.approve`'s decision,
+    and this route's `masters.edit` must not let a lower rank reach around that
+    rank floor by naming the product in a sheet instead of on Approvals.
+
+    `createCategories` defaults to FALSE, mirroring
+    `POST /tickets/import/on-behalf`'s own gate: the console's confirmation is
+    presentation, and the affirmative has to arrive as a positive assertion.
+    """
+    data, name = await _read_product_upload(file)
+    report = await import_service.import_products(
+        db,
+        principal,
+        data,
+        name,
+        vendor_id=vendorId,
+        is_staff=True,
+        dry_run=dryRun,
+        create_categories=createCategories,
+        expected_digest=expectedDigest,
+    )
+    return envelope(report, message=_product_import_message(report))
+
+
+@router.post(
+    "/portal/products/import",
+    response_model=ApiEnvelope[ProductImportReport],
+    dependencies=[IsVendor],
+)
+async def import_own_products(
+    db: Db,
+    principal: CanContribute,
+    file: Annotated[UploadFile, File()],
+    dryRun: Annotated[bool, Query()] = True,
+    createCategories: Annotated[bool, Query()] = False,
+    expectedDigest: Annotated[str | None, Query()] = None,
+) -> ApiEnvelope[ProductImportReport]:
+    """A vendor bulk-adds or bulk-updates its OWN products — `submit_model`'s bulk twin.
+
+    Unpriced and pending, the same as a single submission: there is no price
+    column read for this door, because a vendor has no field to send either
+    figure in anywhere else either. A row matching one of its own REJECTED
+    products is read as the vendor answering the refusal and goes back to
+    `pending`, exactly as editing it by hand would.
+    """
+    data, name = await _read_product_upload(file)
+    report = await import_service.import_products(
+        db,
+        principal,
+        data,
+        name,
+        # THE pin. There is no field on this route for a vendor id to arrive in.
+        vendor_id=principal.vendor_id,
+        is_staff=False,
+        dry_run=dryRun,
+        create_categories=createCategories,
+        expected_digest=expectedDigest,
+    )
+    return envelope(report, message=_product_import_message(report))
 
 
 # ── model-wise serial numbers ─────────────────────────────────────────────────

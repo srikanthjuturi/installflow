@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import play_review
 from app.core.config import settings
+from app.core.errors import AppError
 from app.core.security import create_password_reset_token
 from app.emails import account as account_email
 from app.features.auth.schemas import (
@@ -510,7 +511,20 @@ async def request_password_reset(
     session: AsyncSession, email: str, request_ip: str | None
 ) -> OtpRequestResponse:
     """Email a one-time code to a console account that has forgotten its password."""
-    user = await resettable_user(session, email)
+    try:
+        user = await resettable_user(session, email)
+    except (AppError, HTTPException):
+        # Unknown email, a technician/passwordless account, or a disabled one —
+        # all three leak account existence if told apart from a real send. Answer
+        # with the exact shape a real send produces, devCode forced off so even
+        # a dev echo cannot confirm which case this was.
+        return OtpRequestResponse(
+            sent=True,
+            channel="email",
+            expiresInSeconds=settings.OTP_TTL_SECONDS,
+            resendInSeconds=settings.OTP_RESEND_SECONDS,
+            devCode=None,
+        )
     company_name = await reset_company_name(session, user)
     return await issue_email_code(
         session,
@@ -536,7 +550,15 @@ async def verify_password_reset(
     the two requests it could have been disabled or deleted, and this is the
     last moment before a password is set at which that is cheap to notice.
     """
-    user = await resettable_user(session, email)
+    try:
+        user = await resettable_user(session, email)
+    except (AppError, HTTPException):
+        # Same leak, same mask — an empty token simply fails later at confirm
+        # with the generic "start again" message, which reveals nothing either.
+        return PasswordResetVerifyResponse(
+            resetToken="",
+            expiresInSeconds=settings.PASSWORD_RESET_TOKEN_MINUTES * 60,
+        )
     await consume_code(
         session,
         email=(user.email or email),

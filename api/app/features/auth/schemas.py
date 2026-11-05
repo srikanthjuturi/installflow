@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.core.images import ImageUrl
 from app.core.phone import Phone
-from app.core.schemas import AppModel, BoundedPassword
+from app.core.schemas import AppModel, BoundedPassword, StrongPassword
 from app.features.technicians.schemas import TechnicianSessionOut
 
 
@@ -60,7 +60,7 @@ class PasswordResetConfirmRequest(BaseModel):
     resetToken: str = Field(min_length=1, max_length=4096)
     #: Byte-bounded and floored at 8 — the same rule as
     #: `ChangePasswordRequest.newPassword`, because it is the same act.
-    newPassword: BoundedPassword = Field(min_length=8)
+    newPassword: StrongPassword = Field(min_length=8)
 
 
 class SwitchCompanyRequest(BaseModel):
@@ -99,6 +99,7 @@ class UserOut(AppModel):
     roleLabel: str
     profileImageUrl: str | None
     isSuperadmin: bool
+    mustChangePassword: bool
 
 
 class MembershipOut(AppModel):
@@ -213,7 +214,7 @@ class ChangePasswordRequest(BaseModel):
     #: Byte-bounded, because this one gets HASHED. The old `max_length=128` was
     #: a lie: bcrypt refuses anything over 72 bytes, so a 100-character password
     #: passed validation and then 500'd inside hash_password.
-    newPassword: BoundedPassword = Field(min_length=8)
+    newPassword: StrongPassword = Field(min_length=8)
 
 
 class MeFranchiseeOut(AppModel):

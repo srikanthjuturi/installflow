@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -46,7 +47,9 @@ export function AddVendorUserDialog({
 }) {
   // Set when the password email did not go out — the dialog then shows the
   // password instead of the form. See TemporaryPasswordPanel for why not a toast.
-  const [undelivered, setUndelivered] = useState<CreatedVendorUser | null>(null);
+  const [undelivered, setUndelivered] = useState<CreatedVendorUser | null>(
+    null
+  );
 
   function close() {
     onOpenChange(false);
@@ -59,7 +62,7 @@ export function AddVendorUserDialog({
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
       {/* Unmounts on close, so a second open never holds the first attempt. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-lg">
         {undelivered ? (
           <TemporaryPasswordPanel
             heading="Added, but the email didn't send"
@@ -122,84 +125,103 @@ function AddVendorUserForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate>
-      <DialogHeader>
-        <DialogTitle>Add a user</DialogTitle>
-        <DialogDescription>
-          They can raise tickets and follow the ones they raise.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Add a user</DialogTitle>
+          <DialogDescription>
+            They can raise tickets and follow the ones they raise.
+          </DialogDescription>
+        </DialogHeader>
 
-      <FieldGroup className="mt-5">
-        <Field data-invalid={errors.fullName ? true : undefined}>
-          <FieldLabel htmlFor="vu-name" required>
-            Full name
-          </FieldLabel>
-          <Input
-            id="vu-name"
-            autoComplete="off"
-            aria-invalid={errors.fullName ? true : undefined}
-            aria-describedby={errors.fullName ? "vu-name-error" : undefined}
-            {...register("fullName")}
-          />
-          {errors.fullName ? (
-            <FieldDescription id="vu-name-error" role="alert" className="text-danger">
-              {errors.fullName.message}
-            </FieldDescription>
-          ) : null}
-        </Field>
+        <FieldGroup className="mt-5">
+          <Field data-invalid={errors.fullName ? true : undefined}>
+            <FieldLabel htmlFor="vu-name" required>
+              Full name
+            </FieldLabel>
+            <Input
+              id="vu-name"
+              autoComplete="off"
+              aria-invalid={errors.fullName ? true : undefined}
+              aria-describedby={errors.fullName ? "vu-name-error" : undefined}
+              {...register("fullName")}
+            />
+            {errors.fullName ? (
+              <FieldDescription
+                id="vu-name-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.fullName.message}
+              </FieldDescription>
+            ) : null}
+          </Field>
 
-        <Field data-invalid={errors.email ? true : undefined}>
-          <FieldLabel htmlFor="vu-email" required>
-            Email
-          </FieldLabel>
-          <Input
-            id="vu-email"
-            type="email"
-            autoComplete="off"
-            aria-invalid={errors.email ? true : undefined}
-            aria-describedby={errors.email ? "vu-email-error" : "vu-email-hint"}
-            {...register("email")}
-          />
-          {errors.email ? (
-            <FieldDescription id="vu-email-error" role="alert" className="text-danger">
-              {errors.email.message}
-            </FieldDescription>
-          ) : (
-            <FieldDescription id="vu-email-hint">
-              What they sign in with.
-            </FieldDescription>
-          )}
-        </Field>
+          <Field data-invalid={errors.email ? true : undefined}>
+            <FieldLabel htmlFor="vu-email" required>
+              Email
+            </FieldLabel>
+            <Input
+              id="vu-email"
+              type="email"
+              autoComplete="off"
+              aria-invalid={errors.email ? true : undefined}
+              aria-describedby={
+                errors.email ? "vu-email-error" : "vu-email-hint"
+              }
+              {...register("email")}
+            />
+            {errors.email ? (
+              <FieldDescription
+                id="vu-email-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.email.message}
+              </FieldDescription>
+            ) : (
+              <FieldDescription id="vu-email-hint">
+                What they sign in with.
+              </FieldDescription>
+            )}
+          </Field>
 
-        <Field data-invalid={errors.phone ? true : undefined}>
-          <FieldLabel htmlFor="vu-phone">Phone (optional)</FieldLabel>
-          <Input
-            id="vu-phone"
-            type="tel"
-            autoComplete="off"
-            aria-invalid={errors.phone ? true : undefined}
-            aria-describedby={errors.phone ? "vu-phone-error" : undefined}
-            {...register("phone")}
-          />
-          {errors.phone ? (
-            <FieldDescription id="vu-phone-error" role="alert" className="text-danger">
-              {errors.phone.message}
-            </FieldDescription>
-          ) : null}
-        </Field>
+          <Field data-invalid={errors.phone ? true : undefined}>
+            <FieldLabel htmlFor="vu-phone">Phone (optional)</FieldLabel>
+            <Input
+              id="vu-phone"
+              type="tel"
+              autoComplete="off"
+              aria-invalid={errors.phone ? true : undefined}
+              aria-describedby={errors.phone ? "vu-phone-error" : undefined}
+              {...register("phone")}
+            />
+            {errors.phone ? (
+              <FieldDescription
+                id="vu-phone-error"
+                role="alert"
+                className="text-danger"
+              >
+                {errors.phone.message}
+              </FieldDescription>
+            ) : null}
+          </Field>
+        </FieldGroup>
 
-      </FieldGroup>
-
-      <DialogFooter className="mt-6">
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
-          Add user
-        </Button>
-      </DialogFooter>
+        <DialogFooter className="mt-6">
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
+            Add user
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

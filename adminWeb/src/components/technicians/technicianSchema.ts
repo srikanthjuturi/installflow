@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_COVERAGE_PINCODES } from "./geoTreeMath";
 import type { TechnicianStatus } from "@/types/technician";
 
 /**
@@ -66,6 +67,10 @@ export const technicianSchema = z.object({
   pincodes: z
     .array(z.string())
     .min(1, "Add at least one pincode")
+    .max(
+      MAX_COVERAGE_PINCODES,
+      `A technician can cover up to ${MAX_COVERAGE_PINCODES} pincodes. Untick some to continue.`
+    )
     .refine(
       (v) => v.every((p) => PINCODE_RE.test(p)),
       "Every pincode must be 6 digits"

@@ -18,6 +18,7 @@ import {
 } from "@/services/notifications";
 import { useSession } from "@/store/session";
 import { trackSignIn } from "@/lib/analytics/events";
+import type { MeResponse } from "@/types/api";
 
 /**
  * Sign-in and sign-out against the live backend.
@@ -216,19 +217,30 @@ export function useSignOut() {
  * this browser held a moment ago is dead — without `setTokens` the next request
  * would 401 and sign the user out of the screen they just succeeded on.
  *
+ * Also patches the cached `me` query's `user` with the response's (same
+ * `BackendUser` shape `/auth/me` returns), so `mustChangePassword` flips to
+ * `false` immediately. Without this, `RequirePasswordChange` keeps reading the
+ * stale cached `true` (the query's `staleTime` is 5 minutes) and bounces the
+ * caller straight back to this screen even though the password was changed.
+ *
  * `gcTime: 0` so neither password lingers in the mutation cache, exactly as
  * `useLogin` does.
  */
 export function useChangePassword() {
   const setTokens = useSession((s) => s.setTokens);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (vars: { currentPassword: string; newPassword: string }) =>
       changePassword(vars.currentPassword, vars.newPassword),
-    onSuccess: (payload) =>
+    onSuccess: (payload) => {
       setTokens({
         accessToken: payload.accessToken,
         refreshToken: payload.refreshToken,
-      }),
+      });
+      queryClient.setQueryData<MeResponse>(["me"], (old) =>
+        old ? { ...old, user: payload.user } : old
+      );
+    },
     gcTime: 0,
     meta: { errorTitle: "Couldn't change your password" },
   });

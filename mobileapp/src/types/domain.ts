@@ -288,6 +288,8 @@ export interface Job {
    * from incentivises nobody.
    */
   bonusPaise: number | null;
+  /** The vendor flagged this job urgent. Shown as a pill until it is closed. */
+  isHighPriority?: boolean;
   status: JobStatus;
   /**
    * The server's own status word — `Assigned`, `In Progress`, `Awaiting

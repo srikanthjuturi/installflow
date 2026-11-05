@@ -4,14 +4,17 @@ from app.models.company import Company
 from app.models.company_rules import CompanyRules
 from app.models.credits import CreditEntry, CreditRecharge, PlatformSettings
 from app.models.feature import CompanyRoleFeature, Feature, RoleFeatureDefault
+from app.models.franchise_settlement import FranchiseSettlement
 from app.models.franchisee import Franchisee, FranchiseePincode, FranchiseeTravelRule
 from app.models.franchisee_speed_rule import FranchiseeSpeedRule
 from app.models.job_pass import JobPass
 from app.models.ledger import LedgerEntry
 from app.models.membership import Membership
 from app.models.otp import OtpCode
+from app.models.post_office import PostOffice
 from app.models.product import ProductModel, ProductModelSerial, ProductNode
 from app.models.product_node_rules import ProductNodeRules
+from app.models.purchase_platform import PurchasePlatform
 from app.models.redemption import Redemption, RedemptionEvent
 from app.models.upi_change import UpiChangeRequest
 from app.models.role import Role
@@ -39,6 +42,9 @@ from app.models.notification import Notification, NotificationRead
 from app.models.push_token import PushToken
 from app.models.ticket_event import TicketEvent
 from app.models.token import RefreshToken
+from app.models.technician_location import TechnicianLocation
+from app.models.technician_rules import TechnicianHoldingEvent, TechnicianRules
+from app.models.transaction_document import TransactionDocument
 from app.models.user import User
 from app.models.vendor import Vendor
 from app.models.vendor_address_search import VendorAddressSearch
@@ -51,6 +57,12 @@ from app.models.vendor_credits import (
 from app.models.web_push_subscription import WebPushSubscription
 
 __all__ = [
+    "PostOffice",
+    "TechnicianLocation",
+    "TechnicianHoldingEvent",
+    "TechnicianRules",
+    "FranchiseSettlement",
+    "TransactionDocument",
     "Company",
     "CompanyRoleFeature",
     "CompanyRules",
@@ -76,6 +88,7 @@ __all__ = [
     "ProductModelSerial",
     "ProductNode",
     "ProductNodeRules",
+    "PurchasePlatform",
     "Redemption",
     "RedemptionEvent",
     "UpiChangeRequest",

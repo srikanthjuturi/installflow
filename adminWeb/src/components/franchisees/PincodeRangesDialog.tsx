@@ -12,13 +12,10 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -59,7 +56,7 @@ export function PincodeRangesDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-2xl">
         {!franchisee ? null : (
           <PincodesForm
             key={franchisee.id}
@@ -94,17 +91,22 @@ function PincodesForm({
   // real answer ("hand everything back"), so the preview runs on it.
   const debouncedCheck = checkRangeSyntax(debounced);
   const syntaxOk = debouncedCheck.ok || debouncedCheck.reason === "empty";
-  const preview = usePincodePreview(franchisee.id, normaliseRangeText(debounced), {
-    enabled: syntaxOk,
-  });
+  const preview = usePincodePreview(
+    franchisee.id,
+    normaliseRangeText(debounced),
+    {
+      enabled: syntaxOk,
+    }
+  );
   const plan: PincodeChange | undefined = preview.data;
   const impact = plan ? previewImpact(plan) : null;
   const showConfirm = impact?.any ?? false;
   const applyable = canApply(plan) && syntaxOk && !preview.isFetching;
 
-  const syntaxError = !debouncedCheck.ok && debouncedCheck.reason !== "empty"
-    ? syntaxMessage(debouncedCheck)
-    : null;
+  const syntaxError =
+    !debouncedCheck.ok && debouncedCheck.reason !== "empty"
+      ? syntaxMessage(debouncedCheck)
+      : null;
 
   function commit() {
     if (!applyable) return;
@@ -149,103 +151,102 @@ function PincodesForm({
         ? { label: "Review changes", onClick: () => setPhase("confirm") }
         : { label: "Save pincodes", onClick: commit };
   const primaryDisabled =
-    save.isPending || (phase === "edit" ? !applyable || Boolean(syntaxError) : false);
+    save.isPending ||
+    (phase === "edit" ? !applyable || Boolean(syntaxError) : false);
 
   return (
-    <div className="grid gap-5">
-      <DialogHeader>
-        <DialogTitle>Pincodes for {franchisee.name}</DialogTitle>
-        <DialogDescription>
-          Type ranges and single pincodes, separated by commas or new lines —
-          for example 500001-500099, 500120. Only pincodes in the master are
-          kept.
-        </DialogDescription>
-      </DialogHeader>
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Pincodes for {franchisee.name}</DialogTitle>
+          <DialogDescription>
+            Type ranges and single pincodes, separated by commas or new lines —
+            for example 500001-500099, 500120. Only pincodes in the master are
+            kept.
+          </DialogDescription>
+        </DialogHeader>
 
-      {phase === "confirm" && plan ? (
-        <div className="grid gap-2">
-          <p className="text-base font-semibold text-ink">
-            Apply these pincodes?
-          </p>
-          <p className="text-[13px] text-ink-2">
-            {formatCount(impact!.moved, "technician", "technicians")} move,{" "}
-            {formatCount(impact!.trimmed, "technician", "technicians")} lose
-            pincodes and{" "}
-            {formatCount(impact!.tickets, "ticket", "tickets")} are re-stamped.
-            The technicians' new admins are notified.
-          </p>
-        </div>
-      ) : (
-        <Field data-invalid={syntaxError ? true : undefined}>
-          <FieldLabel htmlFor="franchisee-pincodes" required>
-            Pincode ranges
-          </FieldLabel>
-          <Textarea
-            id="franchisee-pincodes"
-            rows={5}
-            className="font-mono text-[13px]"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            aria-invalid={syntaxError ? true : undefined}
-            aria-describedby={
-              syntaxError
-                ? "franchisee-pincodes-error"
-                : "franchisee-pincodes-preview"
-            }
-            spellCheck={false}
-          />
-          {syntaxError ? (
-            <FieldDescription
-              id="franchisee-pincodes-error"
-              role="alert"
-              className="text-danger"
-            >
-              {syntaxError}
+        {phase === "confirm" && plan ? (
+          <div className="grid gap-2">
+            <p className="text-base font-semibold text-ink">
+              Apply these pincodes?
+            </p>
+            <p className="text-[13px] text-ink-2">
+              {formatCount(impact!.moved, "technician", "technicians")} move,{" "}
+              {formatCount(impact!.trimmed, "technician", "technicians")} lose
+              pincodes and {formatCount(impact!.tickets, "ticket", "tickets")}{" "}
+              are re-stamped. The technicians' new admins are notified.
+            </p>
+          </div>
+        ) : (
+          <Field data-invalid={syntaxError ? true : undefined}>
+            <FieldLabel htmlFor="franchisee-pincodes" required>
+              Pincode ranges
+            </FieldLabel>
+            <Textarea
+              id="franchisee-pincodes"
+              rows={5}
+              className="font-mono text-[13px]"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              aria-invalid={syntaxError ? true : undefined}
+              aria-describedby={
+                syntaxError
+                  ? "franchisee-pincodes-error"
+                  : "franchisee-pincodes-preview"
+              }
+              spellCheck={false}
+            />
+            {syntaxError ? (
+              <FieldDescription
+                id="franchisee-pincodes-error"
+                role="alert"
+                className="text-danger"
+              >
+                {syntaxError}
+              </FieldDescription>
+            ) : null}
+            {/* The plan lives under the field it predicts, so a reader never
+                scrolls away from what their edit produced. */}
+            <FieldDescription id="franchisee-pincodes-preview" className="mt-1">
+              {previewContent()}
             </FieldDescription>
-          ) : null}
-          {/* The plan lives under the field it predicts, so a reader never
-              scrolls away from what their edit produced. */}
-          <FieldDescription
-            id="franchisee-pincodes-preview"
-            className="mt-1"
-          >
-            {previewContent()}
-          </FieldDescription>
-        </Field>
-      )}
+          </Field>
+        )}
 
-      {/* The plan lives beside the field it predicts, in BOTH phases (§5.4):
-          the summary answers "what will this cover?" while typing, and the
-          clash list is shown here because a clash blocks Apply before a
-          reader ever presses Review changes. In confirm it repeats under the
-          totals sentence. */}
-      {plan ? <CarveOutPreview change={plan} homeName={homeName} /> : null}
+        {/* The plan lives beside the field it predicts, in BOTH phases (§5.4):
+            the summary answers "what will this cover?" while typing, and the
+            clash list is shown here because a clash blocks Apply before a
+            reader ever presses Review changes. In confirm it repeats under the
+            totals sentence. */}
+        {plan ? <CarveOutPreview change={plan} homeName={homeName} /> : null}
 
-      {/* A failed request is reported by the toaster (App.tsx), not here. */}
-      <DialogFooter>
-        {phase === "confirm" ? (
+        {/* A failed request is reported by the toaster (App.tsx), not here. */}
+        <DialogFooter>
+          {phase === "confirm" ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={save.isPending}
+              onClick={() => setPhase("edit")}
+            >
+              Back
+            </Button>
+          ) : (
+            <DialogClose render={<Button type="button" variant="outline" />}>
+              Cancel
+            </DialogClose>
+          )}
           <Button
             type="button"
-            variant="outline"
-            disabled={save.isPending}
-            onClick={() => setPhase("edit")}
+            onClick={primary.onClick}
+            disabled={primaryDisabled}
           >
-            Back
+            {save.isPending && <Spinner data-icon="inline-start" />}
+            {primary.label}
           </Button>
-        ) : (
-          <DialogClose render={<Button type="button" variant="outline" />}>
-            Cancel
-          </DialogClose>
-        )}
-        <Button
-          type="button"
-          onClick={primary.onClick}
-          disabled={primaryDisabled}
-        >
-          {save.isPending && <Spinner data-icon="inline-start" />}
-          {primary.label}
-        </Button>
-      </DialogFooter>
+        </DialogFooter>
+      </DialogScrollBody>
     </div>
   );
 
@@ -261,7 +262,11 @@ function PincodesForm({
     }
     if (preview.isError) {
       return (
-        <Notice tone="warn" icon={AlertTriangle} title="Couldn't check those pincodes">
+        <Notice
+          tone="warn"
+          icon={AlertTriangle}
+          title="Couldn't check those pincodes"
+        >
           <Button
             type="button"
             variant="outline"

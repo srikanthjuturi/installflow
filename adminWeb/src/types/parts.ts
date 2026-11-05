@@ -31,6 +31,20 @@ export type PartRequestStatus = (typeof PART_REQUEST_STATUSES)[number];
  */
 export type PartAction = "approve" | "reject" | "issue" | "return";
 
+/**
+ * Where the parts go — COPIED when the technician raised the request.
+ * `parts_address` is a street address they or their manager saved; `base` means
+ * only the technician's base pincode was on file, so there is no street.
+ */
+export interface DeliveryAddress {
+  line: string | null;
+  city: string | null;
+  pincode: string;
+  landmark: string | null;
+  contactPhone: string | null;
+  source: "parts_address" | "base";
+}
+
 /** `PartRequestOut`. No customer name, phone or address (D21). */
 export interface PartRequest {
   id: string;
@@ -75,6 +89,8 @@ export interface PartRequest {
   returnNote: string | null;
   /** Signed per read, 15 minutes; null when there is no photo. */
   returnPhotoUrl: string | null;
+  /** Epic 6. Null (or absent on an older server) = nothing on file. */
+  deliveryAddress?: DeliveryAddress | null;
 }
 
 /** `GET /spare-parts/requests/counts` — what is still on this facility's desk. */

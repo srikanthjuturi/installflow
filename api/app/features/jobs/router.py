@@ -39,6 +39,8 @@ from app.core.schemas import (
 from app.features.auth.schemas import OtpRequestResponse
 from app.features.jobs import service
 from app.features.jobs.schemas import (
+    LocationAck,
+    LocationIn,
     CancelRequest,
     JobOfferOut,
     JobOut,
@@ -60,6 +62,35 @@ CanSeePool = Depends(require_feature("pool.view"))
 #: are different permissions, and a company must be able to grant one without
 #: the other — which a shared key could not express.
 CanReschedule = Depends(require_feature("jobs.reschedule"))
+
+
+@router.post(
+    "/{ticket_id}/location",
+    response_model=ApiEnvelope[LocationAck],
+    dependencies=[CanSeePool],
+)
+async def report_location(
+    db: Db, me: TechnicianPrincipal, ticket_id: uuid.UUID, body: LocationIn
+) -> ApiEnvelope[LocationAck]:
+    """The phone's latest position, while the job is active (foreground only).
+
+    **409 `JOB_NOT_ACTIVE`** once the job is not `Assigned` / `In Progress` /
+    `Awaiting Part` - stop sending. Reports closer together than the gap in the
+    reply are dropped with `accepted: false`, which is not an error. Only the
+    latest point is kept; there is no trail.
+    """
+    principal, profile = me
+    assert principal.company_id is not None
+    accepted = await service.record_location(
+        db,
+        company_id=principal.company_id,
+        technician_id=profile.id,
+        ticket_id=ticket_id,
+        body=body,
+    )
+    return envelope(
+        LocationAck(accepted=accepted, nextAfterSeconds=service.LOCATION_MIN_GAP_SECONDS)
+    )
 
 
 @router.get(

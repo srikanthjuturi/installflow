@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import (
     Principal,
+    require_any_feature,
     require_feature,
     require_min_rank,
     require_vendor_principal,
@@ -83,7 +84,12 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 CanView = Annotated[Principal, Depends(require_feature("vendors.view"))]
 CanEdit = Annotated[Principal, Depends(require_feature("vendors.edit"))]
 #: The Vendor and Brand pickers on the product model form — see `list_vendor_options`.
-CanPickBrand = Annotated[Principal, Depends(require_feature("masters.view"))]
+#: `franchise.tickets` is the franchise portal's Vendor filter on its read-only
+#: ticket list. Franchise roles hold no `masters.view`, so without it the
+#: dropdown's request was refused and read as "No vendor matches".
+CanPickBrand = Annotated[
+    Principal, Depends(require_any_feature("masters.view", "franchise.tickets"))
+]
 NationalHeadUp = Depends(require_min_rank(NATIONAL_HEAD))
 #: The portal's own caller — see `record_address_search`, the one route here
 #: whose caller is a vendor rather than company staff.

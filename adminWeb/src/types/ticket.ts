@@ -59,6 +59,20 @@ export const isTerminalTicketStatus = (status: TicketStatus): boolean =>
   TERMINAL_TICKET_STATUSES.includes(status);
 
 /**
+ * The two statuses that mean a ticket is actually CLOSED — Closed or
+ * Force-Closed. Mirrors `closed_in()` in `api/app/features/tickets/service.py`:
+ * both are ways a job ends up finished, and deliberately not `Cancelled`,
+ * which is a different outcome with no closure to review.
+ *
+ * One expression, so the high-priority board's badge and its "Closed Tickets"
+ * view cannot disagree about what "closed" means.
+ */
+export const CLOSED_TICKET_STATUSES: ReadonlySet<TicketStatus> = new Set([
+  "Closed",
+  "Force-Closed",
+]);
+
+/**
  * Whether a time can still be set for this ticket — by the customer from their
  * link, or by a manager rescheduling. Mirrors `time_is_choosable` in
  * `api/app/core/slots.py`; the server treats those as one question and so
@@ -176,6 +190,14 @@ export type SlaState = "ok" | "warn" | "breach" | "done";
 export const SERVICE_LEVELS = [12, 24, 36, 48] as const;
 export type ServiceLevelHours = (typeof SERVICE_LEVELS)[number];
 
+/**
+ * A7: where the unit was bought. Mirrors `PURCHASE_MODES` in
+ * `api/app/core/tickets.py`. `purchasePlatformId`/`purchasePlatformName` are
+ * null together unless this is `"online"`.
+ */
+export const PURCHASE_MODES = ["online", "offline"] as const;
+export type PurchaseMode = (typeof PURCHASE_MODES)[number];
+
 export interface Ticket {
   id: string;
   /** `INST-240912`. What ops quote on the phone. */
@@ -205,6 +227,32 @@ export interface Ticket {
   /** The customer's problem. Present for Tech Visit and Service, null otherwise. */
   description: string | null;
   /**
+   * A2: a manager or vendor flagging this job for attention on the board.
+   * No SLA, no routing, no eligibility consequence — a flag, nothing else.
+   */
+  isHighPriority: boolean;
+  /**
+   * Epic 1.4: an optional extra charge the vendor added when raising the
+   * ticket - billed to the vendor's account when the job closes, as a debit
+   * note, and counted against its credit line from the moment it is raised.
+   *
+   * PAISE, and a PAIR with the note: both set or both null. Null when there is
+   * none, and always null for a franchise principal (the server withholds it) -
+   * render nothing for null.
+   */
+  extraAmountPaise?: number | null;
+  extraAmountNote?: string | null;
+  /**
+   * A7: where the unit was bought. Always one of `PURCHASE_MODES`;
+   * `purchasePlatformId`/`purchasePlatformName` are null together unless
+   * this is `"online"`.
+   */
+  purchaseMode: PurchaseMode;
+  purchasePlatformId: string | null;
+  /** Resolved on read, like every other `*Name` beside an id — the platform
+   *  can be renamed without rewriting every ticket that named it. */
+  purchasePlatformName: string | null;
+  /**
    * The EXPECTED serial, off the invoice — not the one the technician
    * photographs on site. A mismatch between the two is what AI review is for.
    */
@@ -225,10 +273,16 @@ export interface Ticket {
   /** Masked from technicians until they accept; ops always sees it. */
   customerName: string;
   customerPhone: string;
+  /** A6: a second number for the same customer. Masked on the same terms as
+   *  `customerPhone` until a technician accepts. */
+  customerAltPhone: string | null;
   address: string;
   city: string;
   state: string;
   pincode: string;
+  /** Epic 7: the post-office area within the pincode, free text. Null when none
+   *  was given. Optional only so older fixtures still type-check. */
+  locality?: string | null;
   /**
    * Null when the address was typed rather than picked off a map — every
    * ticket raised before this existed, and everything the Excel and API intake
@@ -575,10 +629,16 @@ export interface CreateTicketInput {
   serialNumber?: string | null;
   customerName: string;
   customerPhone: string;
+  /** A6: a second number for the same customer. Optional — most tickets
+   *  carry one. */
+  customerAltPhone?: string | null;
   address: string;
   city: string;
   state: string;
   pincode: string;
+  /** Epic 7: the area within the pincode, free text, max 80. Send only when
+   *  non-empty. */
+  locality?: string;
   /**
    * Where the address is, when it was picked from the search box rather than
    * typed. Both or neither — the API refuses one without the other.
@@ -594,6 +654,26 @@ export interface CreateTicketInput {
   serviceLevelHours: ServiceLevelHours;
   slotStart?: string | null;
   slotEnd?: string | null;
+
+  /** A2: flag this job for attention on the board. Defaults to `false`
+   *  server-side when omitted. */
+  isHighPriority?: boolean;
+  /** Epic 1.4: both or neither - the server refuses half a pair. PAISE, 1 to
+   *  10,000,000. */
+  extraAmountPaise?: number;
+  /** Epic 1.4: what the extra charge is for, up to 120 characters. */
+  extraAmountNote?: string;
+  /** A7: where the unit was bought. Defaults to `"offline"` server-side
+   *  when omitted. */
+  purchaseMode?: PurchaseMode;
+  /** Only meaningful when `purchaseMode` is `"online"` — the server refuses
+   *  one set alongside `"offline"`. */
+  purchasePlatformId?: string | null;
+  /** E1: free text answering "where was it bought", read two ways by the
+   *  server depending on `purchaseMode` — the offline store name, or the
+   *  online "Others" platform name when no `purchasePlatformId` is sent
+   *  alongside it. Max 120 chars, trimmed by the client before sending. */
+  purchasePlatformName?: string | null;
 }
 
 /* ── the bulk importer ─────────────────────────────────────────────────── */

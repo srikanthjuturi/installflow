@@ -25,6 +25,7 @@ The rules, once:
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import Select, func, select
@@ -130,6 +131,7 @@ async def create_login(
             is_active=True,
             password_hash=hash_password(password),
             created_by=actor_id,
+            must_change_password=True,
         )
         db.add(user)
         await db.flush()
@@ -171,6 +173,8 @@ async def reissue_password(db: AsyncSession, *, user: User, actor_id: uuid.UUID)
     password = generate_temporary_password()
     user.password_hash = hash_password(password)
     user.updated_by = actor_id
+    user.must_change_password = True
+    user.password_changed_at = datetime.now(timezone.utc)
     await revoke_refresh_tokens(db, user.id)
     return password
 

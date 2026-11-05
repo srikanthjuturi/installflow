@@ -47,6 +47,7 @@ from app.core.deps import (
     require_feature,
     require_min_rank,
     require_staff_principal,
+    require_superadmin,
     require_vendor_principal,
 )
 from app.core.schemas import (
@@ -57,7 +58,8 @@ from app.core.schemas import (
     list_params,
     paginated,
 )
-from app.features.tickets import import_service, service
+from app.features.tickets import import_service, location_service, service
+from app.features.tickets.location_service import LiveLocationOut
 from app.features.tickets.schemas import (
     AssignRequest,
     BonusRequest,
@@ -187,13 +189,16 @@ async def list_tickets(
     slaState: Annotated[str | None, Query()] = None,
     serviceType: Annotated[str | None, Query()] = None,
     technicianId: Annotated[uuid.UUID | None, Query()] = None,
+    vendorId: Annotated[uuid.UUID | None, Query()] = None,
     regionId: Annotated[uuid.UUID | None, Query()] = None,
     stateId: Annotated[uuid.UUID | None, Query()] = None,
     dateFrom: Annotated[datetime.date | None, Query()] = None,
     dateTo: Annotated[datetime.date | None, Query()] = None,
     open_: Annotated[bool, Query(alias="open")] = False,
+    closed: Annotated[bool, Query()] = False,
     closedWithinDays: Annotated[int | None, Query(ge=1, le=365)] = None,
     attention: Annotated[str | None, Query()] = None,
+    highPriority: Annotated[bool | None, Query()] = None,
 ) -> PaginatedEnvelope[TicketOut]:
     """One page of tickets, newest first.
 
@@ -201,11 +206,29 @@ async def list_tickets(
     names a sort. `?sortBy=slaState` gives the triage view — the ones already
     late come first — and `?sortBy=createdAt&sortDir=asc` the oldest first.
 
+    `highPriority=true` (A2) is the board's own flag, not a dashboard tile's —
+    `is_high_priority` ANDs onto the same query `scoped()` has already cut
+    down, so it needs no guard of its own. Omitted (the default) filters
+    nothing, so every existing caller is unaffected; `false` is a real filter
+    too, narrowing to the un-flagged half. **Independent of the default sort**:
+    whenever a caller names no `sortBy`, flagged tickets lead the page (`Ticket.
+    is_high_priority DESC`, ahead of "newest first" rather than instead of it)
+    whether or not this filter is also set — an explicit `sortBy` is a question
+    already answered and is never reordered underneath it.
+
     `technicianId` answers "what has this person worked", which is the console's
     technician profile. It needs no guard of its own: the query is already
     company-scoped and territory-scoped, so an id from another company — or from
     outside the reader's own area — narrows to nothing and returns an empty
     page. It cannot be used to discover that a technician exists.
+
+    `vendorId` (A1) is the same story one level over — "what has this vendor
+    raised" — and needs no guard either, for the same reason: it ANDs onto a
+    query `scoped()` has already cut down, so naming a vendor outside the
+    caller's company or territory narrows to nothing rather than ever
+    widening a read. Shared with `GET /tickets/summary` through `service.
+    narrowed()`, so the dashboard's vendor drill-down and this list can never
+    disagree about which tickets it counted.
 
     ## Four filters exist so the DASHBOARD's tiles can link honestly
 
@@ -217,6 +240,9 @@ async def list_tickets(
         as it always did.
       * `open=true` is "not yet closed", from `service.open_tickets()` — the
         same expression the `openTickets` tile counts.
+      * `closed=true` is "ever closed" — Closed or Force-Closed, from
+        `service.closed_in(None)` — deliberately not Cancelled, which is a
+        different outcome with no closure to review.
       * `closedWithinDays=7` is "closed in the last N days", from
         `service.closed_in()` — the same expression the "Closed this week" tile
         counts, with the window it reports in `funnel.closedWithinDays`.
@@ -237,13 +263,16 @@ async def list_tickets(
         sla_filter=slaState,
         service_type=serviceType,
         technician_id=technicianId,
+        vendor_id=vendorId,
         region_id=regionId,
         state_id=stateId,
         date_from=dateFrom,
         date_to=dateTo,
         open_only=open_,
+        closed_only=closed,
         closed_within_days=closedWithinDays,
         attention=attention,
+        high_priority=highPriority,
     )
     return paginated(rows, page=params.page, limit=params.limit, total=total)
 
@@ -434,6 +463,7 @@ async def dashboard_summary(
     stateId: Annotated[uuid.UUID | None, Query()] = None,
     dateFrom: Annotated[datetime.date | None, Query()] = None,
     dateTo: Annotated[datetime.date | None, Query()] = None,
+    vendorId: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ApiEnvelope[DashboardSummaryOut]:
     """Every number the console's dashboard draws, in one round trip.
 
@@ -448,7 +478,7 @@ async def dashboard_summary(
     `DashboardSummaryOut` on why a movement chip with no history behind it is
     the one thing that does not ship.
 
-    ## The four filters narrow; none of them can widen
+    ## The five filters narrow; none of them can widen
 
     `regionId` / `stateId` are the console's territory picker — a national head
     drilling from All India into a region, then a state. They need no permission
@@ -462,6 +492,10 @@ async def dashboard_summary(
     because every ticket has a `created_at` and only some have a slot; bounding
     on the slot would silently drop every unbooked ticket, which is precisely
     what the "Slot not confirmed" card exists to count.
+
+    `vendorId` (A1) is one vendor's own figures — shared with `GET /tickets`
+    through `service.narrowed()`, so a drill-down tile and the list it opens
+    always agree on what they counted.
     """
     return envelope(
         await service.dashboard_summary(
@@ -471,8 +505,36 @@ async def dashboard_summary(
             state_id=stateId,
             date_from=dateFrom,
             date_to=dateTo,
+            vendor_id=vendorId,
         )
     )
+
+
+@router.get(
+    "/high-priority-pending/count",
+    response_model=ApiEnvelope[int],
+)
+async def high_priority_pending_count(db: Db, principal: CanView) -> ApiEnvelope[int]:
+    """How many unassigned high-priority tickets this caller is responsible
+    for (E5) — the blinking "Tickets" nav badge, on the same shape as
+    `GET /masters/approvals/count`.
+
+    Its own endpoint rather than a page of the list: the badge renders on
+    every screen, and "how many" is a TOTAL — a page of twenty rows cannot
+    say there are twenty-three.
+
+    Declared ABOVE `/{ticket_id}`, like `/summary` and `/intake-status` —
+    Starlette matches in declaration order, and the dynamic route would
+    otherwise try to parse "high-priority-pending" as a ticket id and answer
+    422.
+
+    `jobs.view`, the same guard `/summary` carries, and for the same reason:
+    the count runs through `service.scoped()`, the door the list and the
+    dashboard both use, so a Regional Head or Area Manager is told only
+    their own territory's figure and there is nothing counted here that a
+    person who may see the ticket list may not already see.
+    """
+    return envelope(await service.count_high_priority_pending(db, principal))
 
 
 @router.get(
@@ -931,6 +993,38 @@ async def get_ticket_proof(
     Links are signed and expire in minutes; re-read rather than caching them.
     """
     return envelope(await service.list_proof(db, principal, ticket_id))
+
+
+@router.get("/live-locations", response_model=ApiEnvelope[list[LiveLocationOut]])
+async def live_locations(db: Db, principal: CanReadTickets) -> ApiEnvelope[list[LiveLocationOut]]:
+    """Technicians out on a job right now, that this caller may see (Epic 4).
+
+    Scoped exactly like the ticket list: territory for staff, a vendor's own
+    tickets, a franchisee's own. Only active jobs; only the latest point.
+    """
+    return envelope(await location_service.live_list(db, principal))
+
+
+@router.get("/live-locations/all", response_model=ApiEnvelope[list[LiveLocationOut]])
+async def live_locations_all(
+    db: Db,
+    principal: Annotated[Principal, Depends(require_superadmin)],
+    companyId: Annotated[uuid.UUID | None, Query()] = None,
+) -> ApiEnvelope[list[LiveLocationOut]]:
+    """Superadmin: every company's live technicians, optionally one company's."""
+    return envelope(await location_service.live_list_all(db, principal, companyId))
+
+
+@router.get(
+    "/{ticket_id}/technician-location",
+    response_model=ApiEnvelope[LiveLocationOut | None],
+)
+async def technician_location(
+    ticket_id: uuid.UUID, db: Db, principal: CanReadTickets
+) -> ApiEnvelope[LiveLocationOut | None]:
+    """Where the technician on this ticket is now, or null when the job is not
+    active or their phone is not reporting. 404 for a ticket you cannot see."""
+    return envelope(await location_service.for_ticket(db, principal, ticket_id))
 
 
 @router.get("/{ticket_id}", response_model=ApiEnvelope[TicketDetailOut])

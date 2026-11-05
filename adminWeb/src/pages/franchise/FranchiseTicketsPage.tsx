@@ -19,12 +19,25 @@ import type { ListParams } from "@/types/api";
  * Not the staff `TicketListPage`: that page carries the import dialog and the
  * dashboard-links `NarrowedNotice`, neither of which exists on this surface.
  */
+const dateInput =
+  "h-9 rounded-full border border-border bg-background px-3 text-[13px] text-ink-2";
+
 export default function FranchiseTicketsPage() {
   const { data: me } = useMe();
   const { paths } = useWorkspace();
   const { has } = useFeatureAccess();
   const { params, setParams } = useTicketFilters();
   const { data, isLoading, isError, error, refetch } = useTickets(params);
+
+  // Same "Raised" date-range control the staff Ticket List offers — kept
+  // alongside whatever else is in the query string rather than replacing it.
+  const f = params.filters ?? {};
+  const setDate = (patch: { dateFrom?: string; dateTo?: string }) => {
+    const next = { ...params.filters, ...patch };
+    if (!next.dateFrom) delete next.dateFrom;
+    if (!next.dateTo) delete next.dateTo;
+    setParams({ ...params, filters: next, page: 1 });
+  };
 
   // §5.9's two empty states depend on who is reading. A facility role's whole
   // brief here is spare-part requests — tickets that need nobody else — so its
@@ -73,6 +86,28 @@ export default function FranchiseTicketsPage() {
         onRetry={() => refetch()}
         emptyDescription={emptyDescription}
         emptyTitle={isFacility ? "No tickets need you yet" : "No tickets yet"}
+        toolbarActions={
+          <div className="flex items-center gap-1.5 text-[13px] text-ink-2">
+            <span className="whitespace-nowrap">Raised</span>
+            <input
+              type="date"
+              value={f.dateFrom ?? ""}
+              max={f.dateTo || undefined}
+              onChange={(e) => setDate({ dateFrom: e.target.value })}
+              aria-label="Raised from date"
+              className={dateInput}
+            />
+            <span aria-hidden>–</span>
+            <input
+              type="date"
+              value={f.dateTo ?? ""}
+              min={f.dateFrom || undefined}
+              onChange={(e) => setDate({ dateTo: e.target.value })}
+              aria-label="Raised to date"
+              className={dateInput}
+            />
+          </div>
+        }
       />
     </>
   );

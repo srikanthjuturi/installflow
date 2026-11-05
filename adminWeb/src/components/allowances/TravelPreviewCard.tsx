@@ -30,7 +30,7 @@ export function TravelPreview({
 
   return (
     <div className="rounded-md border border-dashed border-line bg-surface-2 px-3.5 py-3">
-      <div className="text-xs font-semibold text-ink-2">Worked example</div>
+      <div className="text-xs font-semibold text-ink-2">Travel Allowance Calculator</div>
       <Field className="mt-2">
         <FieldLabel htmlFor={`${id}-straight`} className="text-xs">
           Straight-line distance to the customer (km)

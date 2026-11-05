@@ -15,6 +15,16 @@ import type { TicketDetail } from "@/types/ticket";
  * job) but the natural way to render a field that is legitimately absent.
  */
 export function FactGrid({ ticket }: { ticket: TicketDetail }) {
+  // A7: never null — `purchaseMode` always carries one of `PURCHASE_MODES`.
+  // The platform name rides along only when there is one to show, rather than
+  // drawing a second row that would read empty for every offline ticket.
+  const purchased =
+    ticket.purchaseMode === "online"
+      ? ticket.purchasePlatformName
+        ? `Online · ${ticket.purchasePlatformName}`
+        : "Online"
+      : "Offline";
+
   const facts: Array<[string, string]> = [
     ["Vendor", ticket.vendorName],
     // Read live through the model, like its name — a vendor may sell several
@@ -24,16 +34,33 @@ export function FactGrid({ ticket }: { ticket: TicketDetail }) {
     ["Product model", ticket.modelName],
     ["Service type", ticket.serviceType],
     ["Service level", `${ticket.serviceLevelHours}h`],
+    ["Purchased", purchased],
     // Only ever present for Tech Visit and Service.
     ["Problem", ticket.description ?? EMPTY],
     ["Expected serial", ticket.serialNumber ?? EMPTY],
     ["Address", `${ticket.address}, ${ticket.city}, ${ticket.state}`],
     ["Pincode", ticket.pincode],
+    // Epic 7: only when the vendor gave one — no empty row for the rest.
+    ...(ticket.locality ? [["Local area", ticket.locality] as [string, string]] : []),
     ["Expected date", formatDate(ticket.expectedDate)],
     ["Created", formatDateTime(ticket.createdAt)],
     ["Confirmed slot", formatSlot(ticket.slotStart, ticket.slotEnd)],
     ["Billed to vendor", ticket.vendorPricePaise === null ? EMPTY : moneyPaise(ticket.vendorPricePaise)],
   ];
+
+  // Epic 1.4: the vendor's optional extra charge. Nothing for null - none was
+  // added, or the caller is a franchise principal and the server withheld it.
+  if (
+    ticket.extraAmountPaise !== null &&
+    ticket.extraAmountPaise !== undefined
+  ) {
+    facts.push([
+      "Extra charge",
+      ticket.extraAmountNote
+        ? `${moneyPaise(ticket.extraAmountPaise)} · ${ticket.extraAmountNote}`
+        : moneyPaise(ticket.extraAmountPaise),
+    ]);
+  }
 
   if (ticket.technicianPayoutPaise !== null) {
     facts.push(["Technician payout", moneyPaise(ticket.technicianPayoutPaise)]);

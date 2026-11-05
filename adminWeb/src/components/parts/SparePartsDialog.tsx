@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -66,16 +67,18 @@ export function SparePartsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Spare parts · {name}</DialogTitle>
-          <DialogDescription>
-            {isModel
-              ? "This product offers these on top of its categories' parts."
-              : `Every product under ${name} offers these, plus anything added further down.`}
-          </DialogDescription>
-        </DialogHeader>
-        <PartsEditor owner={ref} />
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-xl">
+        <DialogScrollBody className="scroll-slim">
+          <DialogHeader>
+            <DialogTitle>Spare parts · {name}</DialogTitle>
+            <DialogDescription>
+              {isModel
+                ? "This product offers these on top of its categories' parts."
+                : `Every product under ${name} offers these, plus anything added further down.`}
+            </DialogDescription>
+          </DialogHeader>
+          <PartsEditor owner={ref} />
+        </DialogScrollBody>
       </DialogContent>
     </Dialog>
   );
@@ -100,7 +103,11 @@ function inheritedGroups(catalogue: Catalogue) {
 
 const key = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
-function PartsEditor({ owner }: { owner: { kind: "node" | "model"; id: string } }) {
+function PartsEditor({
+  owner,
+}: {
+  owner: { kind: "node" | "model"; id: string };
+}) {
   const { data, isPending, isError, error, refetch } = useCatalogue(owner);
   const add = useAddPart(owner);
   const update = useUpdatePart();
@@ -136,7 +143,9 @@ function PartsEditor({ owner }: { owner: { kind: "node" | "model"; id: string } 
 
   const own = data.own;
   // Inherited names this owner has switched off with an inactive own row.
-  const hiddenHere = new Set(own.filter((p) => !p.isActive).map((p) => key(p.name)));
+  const hiddenHere = new Set(
+    own.filter((p) => !p.isActive).map((p) => key(p.name))
+  );
   const groups = inheritedGroups(data);
 
   function submitNew() {
@@ -387,7 +396,11 @@ function PartsEditor({ owner }: { owner: { kind: "node" | "model"; id: string } 
               disabled={add.isPending}
             />
             {newError ? (
-              <p id="add-part-error" role="alert" className="text-xs text-danger">
+              <p
+                id="add-part-error"
+                role="alert"
+                className="text-xs text-danger"
+              >
                 {newError}
               </p>
             ) : null}

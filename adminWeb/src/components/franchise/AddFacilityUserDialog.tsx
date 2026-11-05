@@ -11,6 +11,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -65,7 +66,9 @@ export function AddFacilityUserDialog({
 }) {
   // Set when the password email did not go out — the dialog then shows the
   // password instead of the form. See TemporaryPasswordPanel for why not a toast.
-  const [undelivered, setUndelivered] = useState<CreatedFacilityUser | null>(null);
+  const [undelivered, setUndelivered] = useState<CreatedFacilityUser | null>(
+    null
+  );
 
   function close() {
     onOpenChange(false);
@@ -78,7 +81,7 @@ export function AddFacilityUserDialog({
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
       {/* Unmounts on close, so a second open never holds the first attempt. */}
-      <DialogContent className="scroll-slim max-h-[88vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="flex max-h-[88vh] flex-col overflow-hidden sm:max-w-lg">
         {undelivered ? (
           <TemporaryPasswordPanel
             heading="Added, but the email didn't send"
@@ -153,97 +156,115 @@ function AddFacilityUserForm({
   const err = (name: keyof FacilityUserFormValues) => errors[name]?.message;
 
   return (
-    <form onSubmit={handleSubmit(submit)} noValidate>
-      <DialogHeader>
-        <DialogTitle>Add facility user</DialogTitle>
-        <DialogDescription>
-          They get an email with a temporary password and see only spare-part
-          requests.
-        </DialogDescription>
-      </DialogHeader>
+    <form
+      onSubmit={handleSubmit(submit)}
+      noValidate
+      className="flex min-h-0 flex-1 flex-col"
+    >
+      <DialogScrollBody className="scroll-slim">
+        <DialogHeader>
+          <DialogTitle>Add facility user</DialogTitle>
+          <DialogDescription>
+            They get an email with a temporary password and see only spare-part
+            requests.
+          </DialogDescription>
+        </DialogHeader>
 
-      <FieldGroup className="mt-5">
-        <Field data-invalid={err("fullName") ? true : undefined}>
-          <FieldLabel htmlFor="fu-name" required>
-            Full name
-          </FieldLabel>
-          <Input
-            id="fu-name"
-            autoComplete="off"
-            aria-invalid={err("fullName") ? true : undefined}
-            aria-describedby={err("fullName") ? "fu-name-error" : undefined}
-            {...register("fullName")}
-          />
-          {err("fullName") ? (
-            <FieldDescription id="fu-name-error" role="alert" className="text-danger">
-              {err("fullName")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        <Field data-invalid={err("email") ? true : undefined}>
-          <FieldLabel htmlFor="fu-email" required>
-            Email
-          </FieldLabel>
-          <Input
-            id="fu-email"
-            type="email"
-            autoComplete="off"
-            aria-invalid={err("email") ? true : undefined}
-            aria-describedby={err("email") ? "fu-email-error" : undefined}
-            {...register("email")}
-          />
-          {err("email") ? (
-            <FieldDescription id="fu-email-error" role="alert" className="text-danger">
-              {err("email")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        <Field data-invalid={err("phone") ? true : undefined}>
-          <FieldLabel htmlFor="fu-phone" required>
-            Phone
-          </FieldLabel>
-          <Input
-            id="fu-phone"
-            type="tel"
-            autoComplete="off"
-            aria-invalid={err("phone") ? true : undefined}
-            aria-describedby={err("phone") ? "fu-phone-error" : undefined}
-            {...register("phone")}
-          />
-          {err("phone") ? (
-            <FieldDescription id="fu-phone-error" role="alert" className="text-danger">
-              {err("phone")}
-            </FieldDescription>
-          ) : null}
-        </Field>
-
-        <Controller
-          control={control}
-          name="role"
-          render={({ field }) => (
-            <RoleField
-              options={options}
-              value={field.value}
-              onChange={(next) =>
-                setValue("role", next, { shouldValidate: true })
-              }
-              error={err("role")}
+        <FieldGroup className="mt-5">
+          <Field data-invalid={err("fullName") ? true : undefined}>
+            <FieldLabel htmlFor="fu-name" required>
+              Full name
+            </FieldLabel>
+            <Input
+              id="fu-name"
+              autoComplete="off"
+              aria-invalid={err("fullName") ? true : undefined}
+              aria-describedby={err("fullName") ? "fu-name-error" : undefined}
+              {...register("fullName")}
             />
-          )}
-        />
-      </FieldGroup>
+            {err("fullName") ? (
+              <FieldDescription
+                id="fu-name-error"
+                role="alert"
+                className="text-danger"
+              >
+                {err("fullName")}
+              </FieldDescription>
+            ) : null}
+          </Field>
 
-      <DialogFooter className="mt-6">
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
-          Add user
-        </Button>
-      </DialogFooter>
+          <Field data-invalid={err("email") ? true : undefined}>
+            <FieldLabel htmlFor="fu-email" required>
+              Email
+            </FieldLabel>
+            <Input
+              id="fu-email"
+              type="email"
+              autoComplete="off"
+              aria-invalid={err("email") ? true : undefined}
+              aria-describedby={err("email") ? "fu-email-error" : undefined}
+              {...register("email")}
+            />
+            {err("email") ? (
+              <FieldDescription
+                id="fu-email-error"
+                role="alert"
+                className="text-danger"
+              >
+                {err("email")}
+              </FieldDescription>
+            ) : null}
+          </Field>
+
+          <Field data-invalid={err("phone") ? true : undefined}>
+            <FieldLabel htmlFor="fu-phone" required>
+              Phone
+            </FieldLabel>
+            <Input
+              id="fu-phone"
+              type="tel"
+              autoComplete="off"
+              aria-invalid={err("phone") ? true : undefined}
+              aria-describedby={err("phone") ? "fu-phone-error" : undefined}
+              {...register("phone")}
+            />
+            {err("phone") ? (
+              <FieldDescription
+                id="fu-phone-error"
+                role="alert"
+                className="text-danger"
+              >
+                {err("phone")}
+              </FieldDescription>
+            ) : null}
+          </Field>
+
+          <Controller
+            control={control}
+            name="role"
+            render={({ field }) => (
+              <RoleField
+                options={options}
+                value={field.value}
+                onChange={(next) =>
+                  setValue("role", next, { shouldValidate: true })
+                }
+                error={err("role")}
+              />
+            )}
+          />
+        </FieldGroup>
+
+        <DialogFooter className="mt-6">
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? <Spinner data-icon="inline-start" /> : null}
+            Add user
+          </Button>
+        </DialogFooter>
+      </DialogScrollBody>
     </form>
   );
 }

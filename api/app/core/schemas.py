@@ -46,6 +46,37 @@ def _within_bcrypt_limit(value: str) -> str:
 BoundedPassword = Annotated[str, AfterValidator(_within_bcrypt_limit)]
 
 
+#: A small, curated denylist — NOT a giant import.
+_COMMON_PASSWORDS = frozenset({
+    "password", "password1", "password123", "passw0rd", "12345678", "123456789",
+    "1234567890", "qwerty123", "iloveyou", "admin123", "welcome1", "letmein123",
+    "abc12345", "changeme", "trustno1",
+})
+
+
+def _strong_password(value: str) -> str:
+    # Byte ceiling FIRST, so an over-long password reports the byte error, not strength.
+    _within_bcrypt_limit(value)
+    if not value.strip():
+        raise ValueError("Password cannot be blank or only spaces.")
+    if value.lower() in _COMMON_PASSWORDS:
+        raise ValueError("That password is too common — choose a less predictable one.")
+    has_upper = any(c.isupper() for c in value)
+    has_lower = any(c.islower() for c in value)
+    has_digit = any(c.isdigit() for c in value)
+    has_symbol = any((not c.isalnum()) and (not c.isspace()) for c in value)
+    if not (has_upper and has_lower and has_digit and has_symbol):
+        raise ValueError(
+            "Password must include an uppercase letter, a lowercase letter, "
+            "a digit and a symbol."
+        )
+    return value
+
+
+#: What a user TYPES when choosing their own password. Byte-bounded + complexity + denylist.
+StrongPassword = Annotated[str, AfterValidator(_strong_password)]
+
+
 #: What happened to an account's temporary-password email.
 #:
 #: `sent` means Azure accepted it (202) — NOT that it arrived; there is no

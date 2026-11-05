@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import brand
@@ -61,6 +61,7 @@ def _user_out(user: User) -> UserOut:
         roleLabel=ROLE_LABELS.get(user.role, user.role),
         profileImageUrl=user.profile_image_url,
         isSuperadmin=user.role == SUPERADMIN,
+        mustChangePassword=user.must_change_password,
     )
 
 
@@ -149,6 +150,12 @@ async def issue_session(session: AsyncSession, user: User) -> LoginResponse:
     nothing after it.
     """
     memberships = await _active_memberships(session, user)
+    if not memberships and user.role != SUPERADMIN:
+        raise AppError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="NO_ACTIVE_MEMBERSHIP",
+            detail="Your account has been suspended. Please contact your administrator.",
+        )
     active_company_id = _resolve_active_company(user, memberships)
 
     access = create_access_token(
@@ -233,12 +240,42 @@ async def login(session: AsyncSession, email: str, password: str) -> LoginRespon
     # into a 500.
     if user.password_hash is None:
         raise invalid
+
+    now = datetime.now(timezone.utc)
+    if user.failed_login_locked_until is not None and now < user.failed_login_locked_until:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts, please try again later.",
+        )
+
     if not verify_password(password, user.password_hash):
+        new_count = await session.scalar(
+            update(User)
+            .where(User.id == user.id)
+            .values(failed_login_attempts=User.failed_login_attempts + 1)
+            .returning(User.failed_login_attempts)
+        )
+        extra: dict = {}
+        if new_count % 3 == 0:
+            extra["failed_login_locked_until"] = now + timedelta(minutes=2)
+        if new_count >= 6:
+            extra["requires_security_password_change"] = True
+        if extra:
+            await session.execute(update(User).where(User.id == user.id).values(**extra))
+        await session.commit()
         raise invalid
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Account is disabled"
         )
+
+    if user.failed_login_attempts or user.failed_login_locked_until is not None:
+        await session.execute(
+            update(User).where(User.id == user.id)
+            .values(failed_login_attempts=0, failed_login_locked_until=None)
+        )
+        user.failed_login_attempts = 0
+        user.failed_login_locked_until = None
 
     return await issue_session(session, user)
 
@@ -556,6 +593,9 @@ async def change_password(
     user.password_hash = hash_password(new)
     user.updated_by = user.id
     await revoke_refresh_tokens(session, user.id)
+    user.password_changed_at = datetime.now(timezone.utc)
+    user.must_change_password = False
+    user.requires_security_password_change = False
 
     memberships = await _active_memberships(session, user)
     access = create_access_token(
@@ -706,5 +746,8 @@ async def confirm_password_reset(
     # Whoever else held a session on this account no longer does. That is the
     # point of resetting a password you think somebody else knows.
     await revoke_refresh_tokens(session, user.id)
+    user.password_changed_at = datetime.now(timezone.utc)
+    user.must_change_password = False
+    user.requires_security_password_change = False
 
     return await issue_session(session, user)

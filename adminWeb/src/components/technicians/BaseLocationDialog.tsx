@@ -12,6 +12,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -66,18 +67,20 @@ export function BaseLocationDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Base location · {technician.name}</DialogTitle>
-          <DialogDescription>
-            Click the map or drag the pin, start from a pincode&apos;s centre,
-            or type the coordinates.
-          </DialogDescription>
-        </DialogHeader>
-        <BaseLocationForm
-          technician={technician}
-          onDone={() => onOpenChange(false)}
-        />
+      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-2xl">
+        <DialogScrollBody>
+          <DialogHeader>
+            <DialogTitle>Base location · {technician.name}</DialogTitle>
+            <DialogDescription>
+              Click the map or drag the pin, start from a pincode&apos;s centre,
+              or type the coordinates.
+            </DialogDescription>
+          </DialogHeader>
+          <BaseLocationForm
+            technician={technician}
+            onDone={() => onOpenChange(false)}
+          />
+        </DialogScrollBody>
       </DialogContent>
     </Dialog>
   );
@@ -167,7 +170,11 @@ function BaseLocationForm({
     } catch (err) {
       // Pin the code to its field; the global handler has toasted the sentence.
       pincodeConflict.capture(err, v.pincode, BASE_PINCODE_CODES);
-      pointConflict.capture(err, `${v.latitude},${v.longitude}`, BASE_POINT_CODES);
+      pointConflict.capture(
+        err,
+        `${v.latitude},${v.longitude}`,
+        BASE_POINT_CODES
+      );
     }
   };
 
@@ -235,7 +242,11 @@ function BaseLocationForm({
       </Field>
 
       {tilesFailed ? (
-        <Notice tone="warn" icon={MapPinOff} title="The map couldn't load. Type the coordinates instead.">
+        <Notice
+          tone="warn"
+          icon={MapPinOff}
+          title="The map couldn't load. Type the coordinates instead."
+        >
           The two boxes below still save.
         </Notice>
       ) : null}
@@ -265,7 +276,11 @@ function BaseLocationForm({
             })}
           />
           {latError ? (
-            <FieldDescription id="base-lat-error" role="alert" className="text-danger">
+            <FieldDescription
+              id="base-lat-error"
+              role="alert"
+              className="text-danger"
+            >
               {latError}
             </FieldDescription>
           ) : null}
@@ -285,7 +300,11 @@ function BaseLocationForm({
             })}
           />
           {lngError ? (
-            <FieldDescription id="base-lng-error" role="alert" className="text-danger">
+            <FieldDescription
+              id="base-lng-error"
+              role="alert"
+              className="text-danger"
+            >
               {lngError}
             </FieldDescription>
           ) : null}

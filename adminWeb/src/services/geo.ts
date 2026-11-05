@@ -9,6 +9,9 @@
 import { apiGet, apiGetPage, apiPatch, apiPost, apiPut, apiUpload } from "./http";
 import type { ListParams, Page } from "@/types/api";
 import type {
+  CoverageExpandBody,
+  CoverageExpansion,
+  CoverageTree,
   DistrictInput,
   GeoDistrict,
   GeoPincode,
@@ -17,6 +20,7 @@ import type {
   ImportReport,
   PincodeInput,
   PincodeUpdate,
+  PostOffice,
 } from "@/types/geo";
 
 /** Mirrors MAX_UPLOAD_BYTES in app/features/geo/service.py. Not the 8 MB image
@@ -189,4 +193,49 @@ export function setPincodeActive(
 /** Add a district, so a missing one cannot block entering a pincode. */
 export function createDistrict(input: DistrictInput): Promise<GeoDistrict> {
   return apiPost<GeoDistrict>("/geo/districts", input);
+}
+
+/* ── the coverage picker's tree (Epic 2) ──────────────────────────────────── */
+
+/**
+ * One region's states and districts with counts, and how many of `selected`
+ * sit in each. `franchiseeId` is what staff pass when they edit a franchisee's
+ * coverage; the server forces it for a franchise principal.
+ */
+export function getCoverageTree(body: {
+  regionId: string;
+  selected: string[];
+  franchiseeId?: string;
+}): Promise<CoverageTree> {
+  return apiPost<CoverageTree>("/geo/tree", body);
+}
+
+/** The leaf level — fetched only when a district is opened. */
+export async function getDistrictPincodes(
+  districtId: string,
+  franchiseeId?: string
+): Promise<string[]> {
+  const qs = franchiseeId
+    ? `?franchiseeId=${encodeURIComponent(franchiseeId)}`
+    : "";
+  const out = await apiGet<{ districtId: string; pincodes: string[] }>(
+    `/geo/districts/${encodeURIComponent(districtId)}/pincodes${qs}`
+  );
+  return out.pincodes;
+}
+
+/** Turn "this state / these districts" into pincodes. 422 past 5,000. */
+export function expandCoverage(
+  body: CoverageExpandBody
+): Promise<CoverageExpansion> {
+  return apiPost<CoverageExpansion>("/geo/expand", body);
+}
+
+/**
+ * The post offices of one pincode, for the "Local area" suggestions. An empty
+ * list is a normal answer — a pincode the directory does not cover. Only ever
+ * call with six digits: the server answers anything else with 422.
+ */
+export function listPostOffices(code: string): Promise<PostOffice[]> {
+  return apiGet<PostOffice[]>(`/geo/pincodes/${code}/post-offices`);
 }

@@ -12,19 +12,19 @@ import type { LoginResponse } from "@/types/api";
 
 /** Three flags, eight combinations, ranked superadmin → franchise → portal → ops. */
 describe("landingPath", () => {
-  it("sends every superadmin shape to the companies screen", () => {
+  it("sends every superadmin shape to the transactions screen", () => {
     expect(
       landingPath({ superadmin: true, franchise: true, portal: true })
-    ).toBe("/companies");
+    ).toBe("/all-transactions");
     expect(
       landingPath({ superadmin: true, franchise: true, portal: false })
-    ).toBe("/companies");
+    ).toBe("/all-transactions");
     expect(
       landingPath({ superadmin: true, franchise: false, portal: true })
-    ).toBe("/companies");
+    ).toBe("/all-transactions");
     expect(
       landingPath({ superadmin: true, franchise: false, portal: false })
-    ).toBe("/companies");
+    ).toBe("/all-transactions");
   });
 
   it("sends a franchise session to the portal home, above a portal role", () => {
@@ -70,6 +70,7 @@ function v6State(role: string): Record<string, unknown> {
       roleLabel: role,
       profileImageUrl: null,
       isSuperadmin: false,
+      mustChangePassword: false,
     },
     memberships: [],
     activeCompanyId: "c-1",
@@ -131,6 +132,7 @@ function backendPayload(role: string): LoginResponse {
       roleLabel: role,
       profileImageUrl: null,
       isSuperadmin: false,
+      mustChangePassword: false,
     },
     memberships: [],
     activeCompanyId: "c-1",

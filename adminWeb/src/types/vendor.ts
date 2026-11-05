@@ -136,6 +136,8 @@ export interface VendorOption {
   name: string;
   /** APPROVED brands only — the ones a product may carry. */
   brands: { id: string; name: string }[];
+  /** Ticked intake channels; absent from older API builds. */
+  intakeChannels?: string[];
 }
 
 /** `POST /vendors` and the reissue only — elsewhere it is a plain `Vendor`. */

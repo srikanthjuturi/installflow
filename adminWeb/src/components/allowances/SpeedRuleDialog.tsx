@@ -15,27 +15,22 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogScrollBody,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
-import {
-  useSaveSpeedRule,
-  useSpeedCatalogue,
-} from "@/hooks/useAllowances";
+import { useSaveSpeedRule, useSpeedCatalogue } from "@/hooks/useAllowances";
 import { useNodeTree } from "@/hooks/useProductMaster";
 import type { AllowanceScope, SpeedRule } from "@/types/allowances";
-import {
-  fromProductTree,
-  fromSpeedCatalogue,
-  type PickNode,
-} from "./pickTree";
+import { fromProductTree, fromSpeedCatalogue, type PickNode } from "./pickTree";
 import { targetLabel } from "./speedRows";
 import {
   emptySpeedValues,
   speedRowSchema,
+  takenRuleMessage,
   toSpeedBody,
   toSpeedValues,
   type SpeedRowField,
@@ -75,7 +70,9 @@ export function SpeedRuleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{rule ? "Edit speed rule" : "Add speed rule"}</DialogTitle>
+          <DialogTitle>
+            {rule ? "Edit speed rule" : "Add speed rule"}
+          </DialogTitle>
           <DialogDescription>
             Between the two, nothing is paid or charged. Set both amounts to 0
             to switch speed off for this product.
@@ -171,72 +168,72 @@ function SpeedRuleForm({
 
   return (
     <>
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      noValidate
-      className="flex flex-col gap-4"
-    >
-      {/* Applies to — the target is the key, locked on edit. */}
-      <Field data-invalid={err("targetId") ? true : undefined}>
-        <FieldLabel>Applies to</FieldLabel>
-        <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-2 px-3 py-2">
-          <span className="min-w-0 text-[13px] font-medium">
-            {chosen ?? <span className="text-ink-3">—</span>}
-          </span>
-          {rule ? null : (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setPicking(true)}
-            >
-              {chosen ? "Change" : "Choose category or product"}
-            </Button>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        noValidate
+        className="flex flex-col gap-4"
+      >
+        {/* Applies to — the target is the key, locked on edit. */}
+        <Field data-invalid={err("targetId") ? true : undefined}>
+          <FieldLabel>Applies to</FieldLabel>
+          <div className="flex items-center justify-between gap-3 rounded-md border border-line bg-surface-2 px-3 py-2">
+            <span className="min-w-0 text-[13px] font-medium">
+              {chosen ?? <span className="text-ink-3">—</span>}
+            </span>
+            {rule ? null : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPicking(true)}
+              >
+                {chosen ? "Change" : "Choose category or product"}
+              </Button>
+            )}
+          </div>
+          {err("targetId") ? (
+            <FieldDescription role="alert" className="text-danger">
+              {err("targetId")}
+            </FieldDescription>
+          ) : null}
+        </Field>
+
+        <Controller
+          control={control}
+          name="technicianType"
+          render={({ field }) => (
+            <ChoiceCards
+              legend="Technician type"
+              options={TYPE_OPTIONS}
+              value={field.value}
+              onChange={field.onChange}
+              disabled={Boolean(rule)}
+              description={
+                rule
+                  ? "A rule's type and target are its key — remove it and add a new one to change them."
+                  : undefined
+              }
+            />
           )}
-        </div>
-        {err("targetId") ? (
-          <FieldDescription role="alert" className="text-danger">
-            {err("targetId")}
-          </FieldDescription>
-        ) : null}
-      </Field>
+        />
 
-      <Controller
-        control={control}
-        name="technicianType"
-        render={({ field }) => (
-          <ChoiceCards
-            legend="Technician type"
-            options={TYPE_OPTIONS}
-            value={field.value}
-            onChange={field.onChange}
-            disabled={Boolean(rule)}
-            description={
-              rule
-                ? "A rule's type and target are its key — remove it and add a new one to change them."
-                : undefined
-            }
-          />
-        )}
-      />
+        <FieldGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {num("rewardWithinHours", "Reward if finished within (hours)")}
+          {num("rewardRupees", "Reward (₹)")}
+          {num("penaltyAfterHours", "Penalty if finished after (hours)")}
+          {num("penaltyRupees", "Penalty (₹)")}
+        </FieldGrid>
 
-      <FieldGrid className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {num("rewardWithinHours", "Reward if finished within (hours)")}
-        {num("rewardRupees", "Reward (₹)")}
-        {num("penaltyAfterHours", "Penalty if finished after (hours)")}
-        {num("penaltyRupees", "Penalty (₹)")}
-      </FieldGrid>
-
-      <DialogFooter>
-        <DialogClose render={<Button type="button" variant="outline" />}>
-          Cancel
-        </DialogClose>
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? <Spinner data-icon="inline-start" /> : null}
-          Save rule
-        </Button>
-      </DialogFooter>
-    </form>
+        <DialogFooter>
+          <DialogClose render={<Button type="button" variant="outline" />}>
+            Cancel
+          </DialogClose>
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending ? <Spinner data-icon="inline-start" /> : null}
+            Save rule
+          </Button>
+        </DialogFooter>
+      </form>
 
       {/* Outside the <form>: a portal's events still bubble through React's
           tree, and a picker click must never be able to reach the form. */}
@@ -244,13 +241,15 @@ function SpeedRuleForm({
         open={picking}
         onOpenChange={setPicking}
         scope={scope}
-        isTaken={(kind, id) =>
+        isTaken={(kind, id, name) =>
           existing.some(
             (r) =>
               r.technicianType === TYPE_WORD_TO_WIRE[type] &&
               r.targetKind === kind &&
               r.targetId === id
           )
+            ? takenRuleMessage(name, type)
+            : null
         }
         onChoose={(t) => {
           setValue("targetKind", t.kind, { shouldValidate: true });
@@ -274,7 +273,7 @@ function TargetPickerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   scope: AllowanceScope;
-  isTaken: (kind: "node" | "model", id: string) => boolean;
+  isTaken: (kind: "node" | "model", id: string, name: string) => string | null;
   onChoose: (target: PickedTarget) => void;
 }) {
   const franchise = scope.kind === "franchise";
@@ -294,21 +293,23 @@ function TargetPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Choose what this rule applies to</DialogTitle>
-          <DialogDescription>
-            A category covers every product beneath it.
-          </DialogDescription>
-        </DialogHeader>
-        <SpeedTargetPicker
-          nodes={nodes}
-          isLoading={query.isLoading}
-          error={query.isError ? query.error : null}
-          onRetry={() => query.refetch()}
-          isTaken={isTaken}
-          onChoose={onChoose}
-        />
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-lg">
+        <DialogScrollBody>
+          <DialogHeader>
+            <DialogTitle>Choose what this rule applies to</DialogTitle>
+            <DialogDescription>
+              A category covers every product beneath it.
+            </DialogDescription>
+          </DialogHeader>
+          <SpeedTargetPicker
+            nodes={nodes}
+            isLoading={query.isLoading}
+            error={query.isError ? query.error : null}
+            onRetry={() => query.refetch()}
+            isTaken={isTaken}
+            onChoose={onChoose}
+          />
+        </DialogScrollBody>
       </DialogContent>
     </Dialog>
   );
